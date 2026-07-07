@@ -1,11 +1,6 @@
-import { GameLayer } from "./game.js";
-
-const CONFIG = {
-  logicalWidth: 220,
-  logicalHeight: 124,
-  maxDevicePixelRatio: 2,
-  bassHitThreshold: 0.42
-};
+const WIDTH = 320;
+const HEIGHT = 180;
+const GROUND_Y = 148;
 
 const TRACKS = [
   { title: "Jie", src: "./assets/1. EGOMAŠINA - Jie mix 2.m4a" },
@@ -23,473 +18,631 @@ const TRACKS = [
   { title: "Plomba", src: "./assets/13. EGOMAŠINA - Plomba.m4a" }
 ];
 
-const PALETTE = [
-  [0, 0, 0],
-  [255, 215, 0],
-  [204, 0, 0]
-];
+const COLORS = {
+  black: "#17110f",
+  skyTop: "#2f8de6",
+  sky: "#46b7f2",
+  cloud: "#f7fbff",
+  cloudBlue: "#9be3ff",
+  sea: "#1192dc",
+  seaDark: "#0872b9",
+  foam: "#ffffff",
+  sand: "#f6c86d",
+  sandDark: "#df9c35",
+  sun: "#ffd23c",
+  sunDark: "#f4a900",
+  skin: "#ffc58f",
+  skinDark: "#d88448",
+  red: "#f05a28",
+  redDark: "#b9321c",
+  blue: "#1d63d8",
+  blueDark: "#123f9a",
+  yellow: "#ffd23c",
+  hair: "#ffca2d",
+  brown: "#8d4b19",
+  white: "#ffffff",
+  gray: "#cfd3d8",
+  darkGray: "#303035",
+  tape: "#232323",
+  tapeLabel: "#ffdf52"
+};
 
-const canvas = document.querySelector("#album-canvas");
-const audio = document.querySelector("#album-audio");
-const startButton = document.querySelector("#start-button");
-const chapters = Array.from(document.querySelectorAll(".chapter"));
+const canvas = document.querySelector("#game-canvas");
 const ctx = canvas.getContext("2d", { alpha: false });
-const artCanvas = document.createElement("canvas");
-const art = artCanvas.getContext("2d", { alpha: false });
+const audio = document.querySelector("#album-audio");
+const startPanel = document.querySelector("#start-panel");
+const startButton = document.querySelector("#start-game");
+const statusLine = document.querySelector("#status-line");
+const prevButton = document.querySelector("#prev-track");
+const nextButton = document.querySelector("#next-track");
+const musicButton = document.querySelector("#music-button");
+const trackLabel = document.querySelector("#track-label");
+const scoreLabel = document.querySelector("#score-label");
+const bestLabel = document.querySelector("#best-label");
 
-let dpr = 1;
-let width = 0;
-let height = 0;
-let image = null;
-let heat = null;
-let color = null;
+const keys = {
+  left: false,
+  right: false
+};
+
+const game = {
+  state: "title",
+  trackIndex: 0,
+  score: 0,
+  best: Number(localStorage.getItem("jie-beach-best") || 0),
+  x: 62,
+  jump: 0,
+  vy: 0,
+  invincible: 0,
+  spawnTimer: 1,
+  tapeTimer: 2,
+  obstacles: [],
+  tapes: [],
+  sandOffset: 0,
+  waveOffset: 0,
+  cloudOffset: 0,
+  shake: 0,
+  bass: 0,
+  highs: 0,
+  lastTime: performance.now()
+};
 
 let audioContext = null;
 let analyser = null;
 let mediaSource = null;
 let frequencyData = new Uint8Array(0);
-let waveformData = new Uint8Array(0);
-let currentTrackIndex = 0;
-let hasStarted = false;
-let warningLogged = false;
+let audioWarningShown = false;
 
-let activeChapter = 0;
-let activeMode = "signal";
-let scrollProgress = 0;
-let chapterProgress = 0;
-let phase = 0;
-let lastFrameTime = performance.now();
-let bass = 0;
-let mids = 0;
-let highs = 0;
-let bassFloor = 0;
-let lastHitAt = 0;
-
-const bursts = [];
-const gameLayer = new GameLayer({
-  canvas,
-  drawBlock,
-  isAlbumStarted: () => hasStarted,
-  isAlbumPlaying: () => hasStarted
-});
-
-audio.preload = "none";
-audio.addEventListener("ended", playNextTrack);
-
-startButton.addEventListener("click", startAlbum);
-window.addEventListener("pointerdown", maybeStartFromGesture);
-window.addEventListener("keydown", maybeStartFromGesture);
-window.addEventListener("resize", resize);
-window.addEventListener("orientationchange", resize);
-window.addEventListener("scroll", updateScrollState, { passive: true });
-
+loadTrack(0);
+updateHud();
 resize();
-updateScrollState();
 requestAnimationFrame(frame);
 
-async function maybeStartFromGesture(event) {
-  if (event.target === startButton) return;
-  if (!hasStarted && window.scrollY > window.innerHeight * 0.08) {
-    await startAlbum();
+window.addEventListener("resize", resize);
+window.addEventListener("keydown", handleKeyDown);
+window.addEventListener("keyup", handleKeyUp);
+canvas.addEventListener("pointerdown", handleCanvasTap);
+audio.addEventListener("ended", nextTrack);
+startButton.addEventListener("click", startGame);
+prevButton.addEventListener("click", () => chooseTrack(game.trackIndex - 1));
+nextButton.addEventListener("click", () => chooseTrack(game.trackIndex + 1));
+musicButton.addEventListener("click", toggleMusic);
+
+bindTouchButton("#touch-left", "left");
+bindTouchButton("#touch-right", "right");
+document.querySelector("#touch-jump").addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  if (game.state !== "playing") startGame();
+  jump();
+});
+
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  ctx.imageSmoothingEnabled = false;
+}
+
+function frame(now) {
+  const dt = Math.min(0.033, (now - game.lastTime) / 1000);
+  game.lastTime = now;
+  readAudio();
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function update(dt) {
+  game.cloudOffset = (game.cloudOffset + dt * 7) % 220;
+  game.waveOffset = (game.waveOffset + dt * (18 + game.bass * 22)) % 32;
+
+  if (game.state !== "playing") return;
+
+  const speed = currentSpeed();
+  game.score += dt * (12 + game.trackIndex * 1.8);
+  game.sandOffset = (game.sandOffset + speed * dt) % 64;
+  game.invincible = Math.max(0, game.invincible - dt);
+  game.shake = Math.max(0, game.shake - dt * 16);
+
+  if (keys.left) game.x -= dt * 95;
+  if (keys.right) game.x += dt * 95;
+  game.x = clamp(game.x, 12, WIDTH - 72);
+
+  game.jump += game.vy * dt;
+  game.vy -= 250 * dt;
+  if (game.jump <= 0) {
+    game.jump = 0;
+    game.vy = 0;
+  }
+
+  game.spawnTimer -= dt;
+  if (game.spawnTimer <= 0) {
+    spawnObstacle();
+    game.spawnTimer = nextSpawnDelay();
+  }
+
+  game.tapeTimer -= dt;
+  if (game.tapeTimer <= 0) {
+    spawnTape();
+    game.tapeTimer = 2.4 + Math.random() * 2.2;
+  }
+
+  for (const obstacle of game.obstacles) {
+    obstacle.x -= speed * dt;
+    if (obstacle.kind === "ball") obstacle.spin += dt * 10;
+  }
+
+  for (const tape of game.tapes) {
+    tape.x -= speed * dt;
+    tape.bob += dt * 6;
+  }
+
+  game.obstacles = game.obstacles.filter((obstacle) => obstacle.x + obstacle.w > -20);
+  game.tapes = game.tapes.filter((tape) => tape.x > -16 && !tape.collected);
+
+  collectTapes();
+  checkObstacleHits();
+  updateHud();
+}
+
+function draw() {
+  const scaleX = canvas.width / WIDTH;
+  const scaleY = canvas.height / HEIGHT;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = COLORS.sky;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+
+  const quake = game.shake > 0 ? Math.round(Math.sin(performance.now() * 0.08) * game.shake) : 0;
+  ctx.save();
+  ctx.translate(quake, 0);
+  drawWorld();
+  drawEntities();
+  drawOverlayHints();
+  ctx.restore();
+}
+
+function drawWorld() {
+  rect(0, 0, WIDTH, 74, COLORS.skyTop);
+  rect(0, 22, WIDTH, 60, COLORS.sky);
+  drawCloud(16 - game.cloudOffset * 0.35, 18, 1);
+  drawCloud(106 - game.cloudOffset * 0.2, 10, 0.7);
+  drawCloud(245 - game.cloudOffset * 0.28, 28, 0.85);
+  drawCloud(362 - game.cloudOffset * 0.35, 18, 1);
+  drawSun(163, 32);
+
+  rect(0, 75, WIDTH, 52, COLORS.sea);
+  rect(0, 99, WIDTH, 20, COLORS.seaDark);
+  for (let x = -32; x < WIDTH + 32; x += 32) {
+    const waveX = x + game.waveOffset;
+    rect(waveX, 82, 18, 3, COLORS.foam);
+    rect(waveX + 12, 86, 10, 2, COLORS.foam);
+    rect(waveX + 2, 107, 22, 3, COLORS.foam);
+    rect(waveX + 20, 111, 6, 2, COLORS.foam);
+  }
+
+  rect(0, 121, WIDTH, HEIGHT - 121, COLORS.sand);
+  rect(0, GROUND_Y + 17, WIDTH, 15, COLORS.sandDark);
+
+  for (let x = -64; x < WIDTH + 64; x += 16) {
+    const sx = x - game.sandOffset;
+    rect(sx, 132, 7, 2, COLORS.sandDark);
+    rect(sx + 9, 161, 4, 2, COLORS.sandDark);
+    rect(sx + 3, 174, 10, 2, COLORS.sandDark);
+  }
+
+  rect(0, GROUND_Y + 13, WIDTH, 2, COLORS.black);
+}
+
+function drawEntities() {
+  for (const tape of game.tapes) {
+    drawTape(tape.x, tape.y + Math.sin(tape.bob) * 3);
+  }
+
+  for (const obstacle of game.obstacles) {
+    drawObstacle(obstacle);
+  }
+
+  drawBand(game.x, GROUND_Y - game.jump);
+}
+
+function drawOverlayHints() {
+  if (game.state === "title") {
+    drawPixelText("PRESS START", 116, 157, COLORS.black, 1);
+  } else if (game.state === "gameover") {
+    drawPixelText("WIPE OUT", 132, 66, COLORS.white, 2);
+    drawPixelText(`SCORE ${Math.floor(game.score)}`, 112, 85, COLORS.white, 1);
   }
 }
 
-async function startAlbum() {
-  if (!hasStarted) {
-    hasStarted = true;
-    document.body.classList.add("is-started");
-    setTrack(0);
-    audio.preload = "auto";
+function drawBand(x, footY) {
+  const step = Math.floor(performance.now() / 110) % 2;
+  drawShadow(x + 6, footY + 1, 50);
+  drawPlayer(x, footY, "cap", step);
+  drawPlayer(x + 18, footY, "blond", step ? 0 : 1);
+  drawPlayer(x + 36, footY, "beard", step);
+}
 
-    audioContext = new AudioContext();
-    analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.68;
-    frequencyData = new Uint8Array(analyser.frequencyBinCount);
-    waveformData = new Uint8Array(analyser.fftSize);
+function drawPlayer(x, footY, type, step) {
+  const px = Math.round(x);
+  const y = Math.round(footY - 32);
+  const bob = game.jump > 0 ? 0 : step;
 
-    if (!mediaSource) {
-      mediaSource = audioContext.createMediaElementSource(audio);
-      mediaSource.connect(analyser);
-      analyser.connect(audioContext.destination);
+  rect(px + 3, y + 7 + bob, 13, 14, COLORS.black);
+  rect(px + 5, y + 9 + bob, 9, 10, COLORS.skin);
+  rect(px + 3, y + 20 + bob, 13, 12, COLORS.black);
+  rect(px + 5, y + 21 + bob, 9, 8, COLORS.skin);
+
+  if (type === "cap") {
+    rect(px + 3, y + 3 + bob, 13, 5, COLORS.black);
+    rect(px + 4, y + 4 + bob, 11, 4, COLORS.red);
+    rect(px + 12, y + 6 + bob, 5, 2, COLORS.redDark);
+    rect(px + 6, y + 12 + bob, 7, 3, COLORS.darkGray);
+    rect(px + 4, y + 29 + bob, 12, 6, COLORS.blue);
+  } else if (type === "blond") {
+    rect(px + 2, y + 3 + bob, 15, 8, COLORS.black);
+    rect(px + 4, y + 4 + bob, 11, 8, COLORS.hair);
+    rect(px + 6, y + 14 + bob, 6, 2, COLORS.black);
+    rect(px + 4, y + 29 + bob, 12, 6, COLORS.blue);
+  } else {
+    rect(px + 2, y + 3 + bob, 15, 6, COLORS.black);
+    rect(px + 4, y + 4 + bob, 11, 4, COLORS.white);
+    rect(px + 8, y + 5 + bob, 5, 4, COLORS.gray);
+    rect(px + 4, y + 15 + bob, 10, 6, COLORS.brown);
+    rect(px + 4, y + 29 + bob, 12, 6, COLORS.red);
+  }
+
+  rect(px + 2, y + 22 + bob, 3, 10, COLORS.black);
+  rect(px + 14, y + 22 + bob, 3, 10, COLORS.black);
+  rect(px + 5, y + 35, 4, 9, COLORS.black);
+  rect(px + 11, y + 35, 4, 9, COLORS.black);
+  rect(px + 6 - step, y + 36, 3, 7, COLORS.skin);
+  rect(px + 12 + step, y + 36, 3, 7, COLORS.skin);
+}
+
+function drawObstacle(obstacle) {
+  if (obstacle.kind === "crab") {
+    rect(obstacle.x + 3, obstacle.y + 5, 14, 7, COLORS.black);
+    rect(obstacle.x + 5, obstacle.y + 6, 10, 5, COLORS.red);
+    rect(obstacle.x, obstacle.y + 7, 4, 2, COLORS.redDark);
+    rect(obstacle.x + 16, obstacle.y + 7, 4, 2, COLORS.redDark);
+    rect(obstacle.x + 6, obstacle.y + 4, 2, 2, COLORS.white);
+    rect(obstacle.x + 12, obstacle.y + 4, 2, 2, COLORS.white);
+  } else if (obstacle.kind === "cooler") {
+    rect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.black);
+    rect(obstacle.x + 2, obstacle.y + 3, obstacle.w - 4, obstacle.h - 5, COLORS.blue);
+    rect(obstacle.x + 2, obstacle.y + 1, obstacle.w - 4, 5, COLORS.white);
+    rect(obstacle.x + 8, obstacle.y + 6, 8, 3, COLORS.blueDark);
+  } else if (obstacle.kind === "umbrella") {
+    rect(obstacle.x + 11, obstacle.y + 8, 4, obstacle.h - 8, COLORS.black);
+    rect(obstacle.x + 1, obstacle.y + 8, 25, 4, COLORS.black);
+    rect(obstacle.x + 3, obstacle.y + 4, 21, 6, COLORS.sun);
+    rect(obstacle.x + 9, obstacle.y + 4, 7, 6, COLORS.red);
+  } else {
+    const lift = Math.sin(obstacle.spin) * 2;
+    rect(obstacle.x + 2, obstacle.y + lift + 2, 14, 14, COLORS.black);
+    rect(obstacle.x + 4, obstacle.y + lift + 4, 10, 10, COLORS.white);
+    rect(obstacle.x + 4, obstacle.y + lift + 4, 5, 5, COLORS.red);
+    rect(obstacle.x + 9, obstacle.y + lift + 9, 5, 5, COLORS.blue);
+  }
+}
+
+function drawTape(x, y) {
+  const px = Math.round(x);
+  const py = Math.round(y);
+  rect(px, py, 15, 10, COLORS.black);
+  rect(px + 2, py + 2, 11, 6, COLORS.tape);
+  rect(px + 4, py + 3, 7, 2, COLORS.tapeLabel);
+  rect(px + 3, py + 6, 2, 2, COLORS.white);
+  rect(px + 10, py + 6, 2, 2, COLORS.white);
+}
+
+function drawCloud(x, y, scale) {
+  const s = Math.max(1, scale);
+  rect(x, y + 8 * s, 34 * s, 8 * s, COLORS.cloudBlue);
+  rect(x + 4 * s, y + 4 * s, 22 * s, 8 * s, COLORS.cloud);
+  rect(x + 12 * s, y, 14 * s, 8 * s, COLORS.cloud);
+  rect(x + 25 * s, y + 7 * s, 10 * s, 6 * s, COLORS.cloud);
+}
+
+function drawSun(x, y) {
+  const pulse = Math.round(game.bass * 4);
+  rect(x - 13 - pulse, y - 11, 26 + pulse * 2, 22, COLORS.sunDark);
+  rect(x - 11 - pulse, y - 13 - pulse, 22 + pulse * 2, 26 + pulse * 2, COLORS.sun);
+  rect(x - 8, y - 10, 6, 6, COLORS.white);
+}
+
+function drawShadow(x, y, w) {
+  rect(x, y, w, 3, "rgba(23, 17, 15, 0.28)");
+}
+
+function spawnObstacle() {
+  const difficulty = game.trackIndex / (TRACKS.length - 1);
+  const roll = Math.random();
+  let obstacle;
+
+  if (roll < 0.28) {
+    obstacle = { kind: "crab", x: WIDTH + 18, y: GROUND_Y - 12, w: 20, h: 12 };
+  } else if (roll < 0.55) {
+    obstacle = { kind: "cooler", x: WIDTH + 18, y: GROUND_Y - 22, w: 24, h: 22 };
+  } else if (roll < 0.78) {
+    obstacle = { kind: "ball", x: WIDTH + 18, y: GROUND_Y - 16, w: 18, h: 18, spin: 0 };
+  } else {
+    obstacle = { kind: "umbrella", x: WIDTH + 18, y: GROUND_Y - 31, w: 28, h: 31 };
+  }
+
+  game.obstacles.push(obstacle);
+
+  if (difficulty > 0.45 && Math.random() < difficulty * 0.32) {
+    const gap = 54 + Math.random() * 22;
+    game.obstacles.push({ kind: "crab", x: obstacle.x + gap, y: GROUND_Y - 12, w: 20, h: 12 });
+  }
+}
+
+function spawnTape() {
+  game.tapes.push({
+    x: WIDTH + 18,
+    y: GROUND_Y - 52 - Math.random() * 34,
+    bob: Math.random() * 10,
+    collected: false
+  });
+}
+
+function collectTapes() {
+  const rects = playerRects();
+  for (const tape of game.tapes) {
+    const tapeRect = { x: tape.x, y: tape.y, w: 15, h: 10 };
+    if (rects.some((rectA) => overlaps(rectA, tapeRect))) {
+      tape.collected = true;
+      game.score += 250;
+      game.shake = Math.max(game.shake, 1);
     }
   }
-
-  await resumePlayback();
 }
 
-async function resumePlayback() {
+function checkObstacleHits() {
+  if (game.invincible > 0) return;
+
+  const rects = playerRects();
+  for (const obstacle of game.obstacles) {
+    const obstacleRect = {
+      x: obstacle.x + 3,
+      y: obstacle.y + 3,
+      w: obstacle.w - 6,
+      h: obstacle.h - 3
+    };
+    if (rects.some((rectA) => overlaps(rectA, obstacleRect))) {
+      endGame();
+      return;
+    }
+  }
+}
+
+function playerRects() {
+  const top = GROUND_Y - game.jump - 27;
+  return [
+    { x: game.x + 5, y: top, w: 11, h: 25 },
+    { x: game.x + 23, y: top, w: 11, h: 25 },
+    { x: game.x + 41, y: top, w: 11, h: 25 }
+  ];
+}
+
+function startGame() {
+  document.body.classList.add("is-playing");
+  game.state = "playing";
+  game.score = 0;
+  game.x = 62;
+  game.jump = 0;
+  game.vy = 0;
+  game.invincible = 1.1;
+  game.spawnTimer = 1.2;
+  game.tapeTimer = 1.8;
+  game.obstacles = [];
+  game.tapes = [];
+  game.shake = 0;
+  statusLine.textContent = "Dodge beach junk, grab tapes, keep the band moving.";
+  startButton.textContent = "START";
+  startAudio();
+  updateHud();
+}
+
+function endGame() {
+  game.state = "gameover";
+  document.body.classList.remove("is-playing");
+  game.shake = 4;
+  game.best = Math.max(game.best, Math.floor(game.score));
+  localStorage.setItem("jie-beach-best", String(game.best));
+  statusLine.textContent = `Wipe out. Score ${Math.floor(game.score)}. Try the beach again.`;
+  startButton.textContent = "PLAY AGAIN";
+  updateHud();
+}
+
+function jump() {
+  if (game.state !== "playing") return;
+  if (game.jump > 2) return;
+  game.vy = 92;
+  game.jump = 1;
+}
+
+function handleKeyDown(event) {
+  if (event.code === "ArrowLeft" || event.code === "KeyA") {
+    keys.left = true;
+    event.preventDefault();
+  } else if (event.code === "ArrowRight" || event.code === "KeyD") {
+    keys.right = true;
+    event.preventDefault();
+  } else if (event.code === "Space" || event.code === "ArrowUp" || event.code === "KeyW") {
+    event.preventDefault();
+    if (game.state !== "playing") startGame();
+    jump();
+  } else if (event.code === "Enter" && game.state !== "playing") {
+    event.preventDefault();
+    startGame();
+  }
+}
+
+function handleKeyUp(event) {
+  if (event.code === "ArrowLeft" || event.code === "KeyA") {
+    keys.left = false;
+  } else if (event.code === "ArrowRight" || event.code === "KeyD") {
+    keys.right = false;
+  }
+}
+
+function handleCanvasTap(event) {
+  event.preventDefault();
+  if (game.state !== "playing") {
+    startGame();
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const middle = rect.width * 0.5;
+  if (x < middle - rect.width * 0.18) {
+    keys.left = true;
+    setTimeout(() => {
+      keys.left = false;
+    }, 180);
+  } else if (x > middle + rect.width * 0.18) {
+    keys.right = true;
+    setTimeout(() => {
+      keys.right = false;
+    }, 180);
+  } else {
+    jump();
+  }
+}
+
+function bindTouchButton(selector, direction) {
+  const button = document.querySelector(selector);
+  const set = (value) => {
+    keys[direction] = value;
+  };
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    set(true);
+  });
+  button.addEventListener("pointerup", () => set(false));
+  button.addEventListener("pointercancel", () => set(false));
+  button.addEventListener("lostpointercapture", () => set(false));
+}
+
+async function startAudio() {
   try {
-    if (audioContext?.state === "suspended") {
-      await audioContext.resume();
-    }
-
-    if (audio.paused) {
-      await audio.play();
-    }
+    setupAudioContext();
+    if (audioContext?.state === "suspended") await audioContext.resume();
+    if (audio.paused) await audio.play();
+    musicButton.textContent = "Ⅱ";
   } catch (error) {
-    if (!warningLogged) {
+    if (!audioWarningShown) {
+      statusLine.textContent = "Game is running. Tap the music button if the song did not start.";
       console.warn("Audio could not start from this interaction.", error);
-      warningLogged = true;
+      audioWarningShown = true;
     }
   }
 }
 
-function setTrack(index) {
-  currentTrackIndex = Math.max(0, Math.min(TRACKS.length - 1, index));
-  const src = new URL(TRACKS[currentTrackIndex].src, window.location.href).href;
+function setupAudioContext() {
+  if (audioContext) return;
+
+  audioContext = new AudioContext();
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.smoothingTimeConstant = 0.75;
+  frequencyData = new Uint8Array(analyser.frequencyBinCount);
+  mediaSource = audioContext.createMediaElementSource(audio);
+  mediaSource.connect(analyser);
+  analyser.connect(audioContext.destination);
+}
+
+function readAudio() {
+  if (!analyser || !frequencyData.length) {
+    const t = performance.now() * 0.001;
+    game.bass = 0.28 + Math.sin(t * 2.2) * 0.1;
+    game.highs = 0.2 + Math.sin(t * 4.7) * 0.08;
+    return;
+  }
+
+  analyser.getByteFrequencyData(frequencyData);
+  game.bass = bandAverage(0, 7);
+  game.highs = bandAverage(46, 140);
+}
+
+function bandAverage(start, end) {
+  const last = Math.min(end, frequencyData.length);
+  let sum = 0;
+  for (let i = start; i < last; i += 1) sum += frequencyData[i];
+  return sum / Math.max(1, last - start) / 255;
+}
+
+function toggleMusic() {
+  if (audio.paused) {
+    startAudio();
+  } else {
+    audio.pause();
+    musicButton.textContent = "▶";
+  }
+}
+
+function chooseTrack(index) {
+  const wasPlaying = !audio.paused;
+  loadTrack(index);
+  if (wasPlaying) startAudio();
+}
+
+function nextTrack() {
+  chooseTrack(game.trackIndex + 1);
+}
+
+function loadTrack(index) {
+  game.trackIndex = (index + TRACKS.length) % TRACKS.length;
+  const track = TRACKS[game.trackIndex];
+  const src = new URL(track.src, window.location.href).href;
 
   if (audio.src !== src) {
     audio.src = src;
     audio.load();
   }
+
+  updateHud();
 }
 
-function playNextTrack() {
-  if (currentTrackIndex >= TRACKS.length - 1) return;
-  setTrack(currentTrackIndex + 1);
-  resumePlayback();
+function updateHud() {
+  const track = TRACKS[game.trackIndex];
+  trackLabel.textContent = `${String(game.trackIndex + 1).padStart(2, "0")} / ${track.title}`;
+  scoreLabel.textContent = String(Math.floor(game.score)).padStart(6, "0");
+  bestLabel.textContent = `BEST ${String(game.best).padStart(6, "0")}`;
 }
 
-function frame(now) {
-  const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
-  lastFrameTime = now;
-  phase += dt;
-
-  readAudioBands();
-  updateBursts(dt);
-  gameLayer.update(dt, bass, highs, activeChapter);
-  draw(now);
-
-  requestAnimationFrame(frame);
+function currentSpeed() {
+  return 54 + game.trackIndex * 2.2 + Math.min(24, game.score / 450) + game.bass * 7;
 }
 
-function readAudioBands() {
-  if (analyser && frequencyData.length) {
-    analyser.getByteFrequencyData(frequencyData);
-    analyser.getByteTimeDomainData(waveformData);
-    bass = lerp(bass, bandAverageHz(20, 250), 0.36);
-    mids = lerp(mids, bandAverageHz(250, 2000), 0.28);
-    highs = lerp(highs, bandAverageHz(2000, 9000), 0.32);
-  } else {
-    bass = 0.18 + Math.sin(phase * 1.4) * 0.07;
-    mids = 0.18 + Math.sin(phase * 0.8 + 1.4) * 0.06;
-    highs = 0.1 + Math.sin(phase * 2.2 + 2.5) * 0.05;
-  }
-
-  bassFloor = lerp(bassFloor, bass, 0.02);
-
-  if (bass > CONFIG.bassHitThreshold && bass > bassFloor + 0.07 && performance.now() - lastHitAt > 150) {
-    spawnBurst();
-    lastHitAt = performance.now();
-  }
+function nextSpawnDelay() {
+  const difficulty = game.trackIndex / (TRACKS.length - 1);
+  const scorePressure = Math.min(0.22, game.score / 7000);
+  return 1.38 - difficulty * 0.42 - scorePressure + Math.random() * 0.32;
 }
 
-function bandAverageHz(lowHz, highHz) {
-  if (!audioContext || !frequencyData.length) return 0;
-
-  const nyquist = audioContext.sampleRate / 2;
-  const start = clamp(Math.floor((lowHz / nyquist) * frequencyData.length), 0, frequencyData.length - 1);
-  const end = clamp(Math.ceil((highHz / nyquist) * frequencyData.length), start + 1, frequencyData.length);
-  let sum = 0;
-
-  for (let i = start; i < end; i += 1) {
-    sum += frequencyData[i];
-  }
-
-  return sum / ((end - start) * 255);
+function drawPixelText(text, x, y, color, scale = 1) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = `${8 * scale}px "Courier New", monospace`;
+  ctx.textBaseline = "top";
+  ctx.fillText(text, x, y);
+  ctx.restore();
 }
 
-function draw(now) {
-  fadeField();
-  drawModeComposition(now);
-  drawWaveformThread();
-  drawSignalNoise(now);
-  drawBursts();
-  gameLayer.draw(art, CONFIG);
-  renderField(now);
-
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = "#000000";
-  ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(artCanvas, 0, 0, width, height);
+function rect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
-function fadeField() {
-  const decay = 0.86 - bass * 0.06;
-
-  for (let i = 0; i < heat.length; i += 1) {
-    heat[i] *= decay;
-    if (heat[i] < 0.018) heat[i] = 0;
-  }
-}
-
-function drawModeComposition(now) {
-  if (activeMode === "bars") {
-    drawBars(now);
-  } else if (activeMode === "corridor") {
-    drawCorridor(now);
-  } else if (activeMode === "grid") {
-    drawGrid(now);
-  } else if (activeMode === "wave") {
-    drawWaves(now);
-  } else {
-    drawSignal(now);
-  }
-}
-
-function drawWaves(now) {
-  const lanes = 3 + (activeChapter % 3);
-  const amp = 10 + bass * 28 + Math.sin(chapterProgress * Math.PI) * 18;
-
-  for (let lane = 0; lane < lanes; lane += 1) {
-    const yBase = CONFIG.logicalHeight * ((lane + 1) / (lanes + 1));
-    const colorIndex = lane % 2 ? 2 : 1;
-
-    for (let x = -4; x < CONFIG.logicalWidth + 4; x += 2) {
-      const y = yBase + Math.sin(x * 0.055 + phase * 1.1 + activeChapter) * amp;
-      drawBlock(x, y, 3 + bass * 8, 1 + highs * 3, 0.35 + mids * 0.7, colorIndex);
-    }
-  }
-}
-
-function drawBars(now) {
-  const count = 18 + activeChapter;
-  const step = CONFIG.logicalWidth / count;
-
-  for (let i = 0; i < count; i += 1) {
-    const energy = frequencyData.length ? frequencyData[Math.floor((i / count) * frequencyData.length * 0.55)] / 255 : hash2(i, activeChapter);
-    const h = 12 + energy * 86 + Math.sin(chapterProgress * Math.PI) * 24;
-    const x = i * step;
-    const y = CONFIG.logicalHeight - h;
-    drawBlock(x, y, Math.max(1, step * 0.42), h, 0.24 + energy, i % 3 === 0 ? 2 : 1);
-  }
-}
-
-function drawCorridor(now) {
-  const cx = CONFIG.logicalWidth * (0.5 + Math.sin(chapterProgress * Math.PI * 2) * 0.18);
-  const cy = CONFIG.logicalHeight * 0.5;
-  const depth = 8 + (activeChapter % 4);
-
-  for (let i = 0; i < depth; i += 1) {
-    const t = i / depth;
-    const w = lerp(16, CONFIG.logicalWidth * 1.25, t) + bass * 20;
-    const h = lerp(8, CONFIG.logicalHeight * 0.92, t) + mids * 18;
-    drawRectRing(cx, cy, w * 0.5, h * 0.5, 0.28 + (1 - t) * 0.35, i % 2 ? 2 : 1);
-  }
-}
-
-function drawGrid(now) {
-  const size = 7 + (activeChapter % 4) * 3;
-  const drift = Math.floor(phase * 12 + chapterProgress * 50);
-
-  for (let y = -size; y < CONFIG.logicalHeight + size; y += size) {
-    for (let x = -size; x < CONFIG.logicalWidth + size; x += size) {
-      const gate = hash2(x + drift, y - drift);
-      if (gate > 0.18 + mids * 0.18) continue;
-      drawBlock(x + Math.sin(y * 0.13 + phase) * 4, y, size * 0.6, size * 0.18 + highs * 4, 0.28 + bass, gate > 0.72 ? 2 : 1);
-    }
-  }
-}
-
-function drawSignal(now) {
-  const seed = Math.floor(now * 0.025);
-  for (let y = 0; y < CONFIG.logicalHeight; y += 5) {
-    const x = hash2(y, seed) * CONFIG.logicalWidth;
-    drawBlock(x, y, 12 + hash2(seed, y) * 46, 1, 0.22 + highs * 0.5, y % 3 ? 1 : 2);
-  }
-}
-
-function drawWaveformThread() {
-  if (!waveformData.length) return;
-
-  const yBase = CONFIG.logicalHeight * 0.5;
-  for (let x = 0; x < CONFIG.logicalWidth; x += 2) {
-    const sampleIndex = Math.floor((x / CONFIG.logicalWidth) * waveformData.length);
-    const sample = (waveformData[sampleIndex] - 128) / 128;
-    const y = yBase + sample * (8 + bass * 26);
-    drawBlock(x, y, 2 + highs * 4, 1, 0.35 + bass * 0.7, 2);
-  }
-}
-
-function drawSignalNoise(now) {
-  const seed = Math.floor(now * 0.07);
-  const count = 90 + Math.floor(highs * 620);
-
-  for (let i = 0; i < count; i += 1) {
-    const x = Math.floor(hash2(i, seed) * CONFIG.logicalWidth);
-    const y = Math.floor(hash2(seed, i + activeChapter) * CONFIG.logicalHeight);
-    const w = 1 + Math.floor(hash2(i + 21, seed) * (2 + highs * 10));
-    drawBlock(x, y, w, 1, 0.12 + highs * 0.7, hash2(i, seed + 4) > 0.7 ? 2 : 1);
-  }
-
-  for (let y = seed % 5; y < CONFIG.logicalHeight; y += 5) {
-    if (hash2(y, seed) > 0.62 - highs * 0.18) subtractLine(y, 0.18 + highs * 0.4);
-  }
-}
-
-function spawnBurst() {
-  bursts.push({
-    x: CONFIG.logicalWidth * (0.5 + Math.sin(activeChapter * 1.9 + phase) * 0.34),
-    y: CONFIG.logicalHeight * (0.5 + Math.cos(activeChapter * 1.3 + phase) * 0.28),
-    age: 0,
-    life: 0.48 + bass * 0.4,
-    seed: Math.random() * 1000,
-    color: Math.random() > 0.4 ? 1 : 2
-  });
-
-  if (bursts.length > 16) bursts.shift();
-}
-
-function updateBursts(dt) {
-  for (let i = bursts.length - 1; i >= 0; i -= 1) {
-    bursts[i].age += dt;
-    if (bursts[i].age > bursts[i].life) bursts.splice(i, 1);
-  }
-}
-
-function drawBursts() {
-  for (const burst of bursts) {
-    const t = burst.age / burst.life;
-    const radius = 8 + t * (38 + bass * 48);
-    const amount = (1 - t) * (0.65 + bass);
-    drawRectRing(burst.x, burst.y, radius * 1.7, radius, amount, burst.color);
-
-    for (let i = 0; i < 10; i += 1) {
-      const angle = burst.seed + i * 1.7;
-      drawBlock(
-        burst.x + Math.cos(angle) * radius,
-        burst.y + Math.sin(angle * 1.2) * radius,
-        3 + bass * 12,
-        1 + highs * 6,
-        amount,
-        i % 3 === 0 ? 2 : burst.color
-      );
-    }
-  }
-}
-
-function renderField(now) {
-  const data = image.data;
-  const seed = Math.floor(now * 0.04);
-
-  for (let i = 0; i < heat.length; i += 1) {
-    const offset = i * 4;
-    const lit = heat[i] > 0.16 + hash1(i + seed) * 0.38;
-
-    if (!lit) {
-      data[offset] = 0;
-      data[offset + 1] = 0;
-      data[offset + 2] = 0;
-      data[offset + 3] = 255;
-      continue;
-    }
-
-    const selected = PALETTE[color[i] === 2 ? 2 : 1];
-    data[offset] = selected[0];
-    data[offset + 1] = selected[1];
-    data[offset + 2] = selected[2];
-    data[offset + 3] = 255;
-  }
-
-  art.putImageData(image, 0, 0);
-}
-
-function drawBlock(x, y, blockWidth, blockHeight, amount, colorIndex) {
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const x1 = Math.ceil(x + blockWidth);
-  const y1 = Math.ceil(y + blockHeight);
-
-  for (let py = y0; py < y1; py += 1) {
-    if (py < 0 || py >= CONFIG.logicalHeight) continue;
-    for (let px = x0; px < x1; px += 1) {
-      if (px < 0 || px >= CONFIG.logicalWidth) continue;
-      const index = py * CONFIG.logicalWidth + px;
-      heat[index] = Math.min(1.8, heat[index] + amount);
-      color[index] = colorIndex;
-    }
-  }
-}
-
-function drawRectRing(cx, cy, rx, ry, amount, colorIndex) {
-  const thickness = 1 + Math.floor(bass * 4);
-  drawBlock(cx - rx, cy - ry, rx * 2, thickness, amount, colorIndex);
-  drawBlock(cx - rx, cy + ry, rx * 2, thickness, amount, colorIndex);
-  drawBlock(cx - rx, cy - ry, thickness, ry * 2, amount, colorIndex);
-  drawBlock(cx + rx, cy - ry, thickness, ry * 2, amount, colorIndex);
-}
-
-function subtractLine(y, amount) {
-  const row = Math.floor(y);
-  if (row < 0 || row >= CONFIG.logicalHeight) return;
-
-  const start = row * CONFIG.logicalWidth;
-  for (let x = 0; x < CONFIG.logicalWidth; x += 1) {
-    heat[start + x] = Math.max(0, heat[start + x] - amount);
-  }
-}
-
-function updateScrollState() {
-  const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-  scrollProgress = clamp(window.scrollY / maxScroll, 0, 1);
-
-  let best = chapters[0];
-  let bestDistance = Number.POSITIVE_INFINITY;
-  const viewportMiddle = window.innerHeight * 0.5;
-
-  for (const chapter of chapters) {
-    const rect = chapter.getBoundingClientRect();
-    const distance = Math.abs(rect.top + rect.height * 0.5 - viewportMiddle);
-    if (distance < bestDistance) {
-      best = chapter;
-      bestDistance = distance;
-    }
-  }
-
-  chapters.forEach((chapter) => chapter.classList.toggle("is-active", chapter === best));
-  activeChapter = Number(best.dataset.chapter || 0);
-  activeMode = best.dataset.mode || "signal";
-
-  const rect = best.getBoundingClientRect();
-  chapterProgress = clamp((window.innerHeight - rect.top) / (window.innerHeight + rect.height), 0, 1);
-
-  document.documentElement.style.setProperty("--scroll-progress", scrollProgress.toFixed(4));
-  document.documentElement.style.setProperty("--chapter-progress", chapterProgress.toFixed(4));
-}
-
-function resize() {
-  dpr = Math.max(1, Math.min(CONFIG.maxDevicePixelRatio, window.devicePixelRatio || 1));
-  width = Math.floor(window.innerWidth * dpr);
-  height = Math.floor(window.innerHeight * dpr);
-
-  canvas.width = width;
-  canvas.height = height;
-  canvas.style.width = `${window.innerWidth}px`;
-  canvas.style.height = `${window.innerHeight}px`;
-
-  artCanvas.width = CONFIG.logicalWidth;
-  artCanvas.height = CONFIG.logicalHeight;
-  image = art.createImageData(CONFIG.logicalWidth, CONFIG.logicalHeight);
-  heat = new Float32Array(CONFIG.logicalWidth * CONFIG.logicalHeight);
-  color = new Uint8Array(CONFIG.logicalWidth * CONFIG.logicalHeight);
-
-  ctx.imageSmoothingEnabled = false;
-  art.imageSmoothingEnabled = false;
-  updateScrollState();
-}
-
-function hash1(value) {
-  const x = Math.sin(value * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function hash2(a, b) {
-  return hash1(a * 127.1 + b * 311.7);
-}
-
-function lerp(a, b, t) {
-  return a + (b - a) * t;
+function overlaps(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 function clamp(value, min, max) {
