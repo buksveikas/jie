@@ -1,3 +1,5 @@
+import { GameLayer } from "./game.js";
+
 const CONFIG = {
   logicalWidth: 220,
   logicalHeight: 124,
@@ -64,6 +66,12 @@ let bassFloor = 0;
 let lastHitAt = 0;
 
 const bursts = [];
+const gameLayer = new GameLayer({
+  canvas,
+  drawBlock,
+  isAlbumStarted: () => hasStarted,
+  isAlbumPlaying: () => hasStarted
+});
 
 audio.preload = "none";
 audio.addEventListener("ended", playNextTrack);
@@ -150,6 +158,7 @@ function frame(now) {
 
   readAudioBands();
   updateBursts(dt);
+  gameLayer.update(dt, bass, highs, activeChapter);
   draw(now);
 
   requestAnimationFrame(frame);
@@ -197,6 +206,7 @@ function draw(now) {
   drawWaveformThread();
   drawSignalNoise(now);
   drawBursts();
+  gameLayer.draw(art, CONFIG);
   renderField(now);
 
   ctx.imageSmoothingEnabled = false;

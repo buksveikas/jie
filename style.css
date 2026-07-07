@@ -60,6 +60,10 @@ body::after {
   z-index: 0;
 }
 
+body.is-game-running #album-canvas {
+  z-index: 4;
+}
+
 #start-button {
   align-items: center;
   background: var(--yellow);
