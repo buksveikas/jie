@@ -1,11 +1,83 @@
 const CONFIG = {
-  audioSrc: "./assets/ALBUM_AUDIO_FILE.mp3",
-  albumDurationFallback: 180,
   pixelsPerSecond: 210,
   logicalWidth: 192,
   logicalHeight: 108,
   bassHitThreshold: 0.62
 };
+
+const TRACKS = [
+  {
+    title: "Jie",
+    src: "./assets/1. EGOMAŠINA - Jie mix 2.m4a",
+    duration: 180.382132
+  },
+  {
+    title: "Bamboaze",
+    src: "./assets/2. EGOMAŠINA - Bamboaze.m4a",
+    duration: 211
+  },
+  {
+    title: "Patogu, Patinka",
+    src: "./assets/3. EGOMAŠINA - Patogu, Patinka Mix 2.m4a",
+    duration: 173.403061
+  },
+  {
+    title: "Sakau Tau Labas",
+    src: "./assets/4. EGOMAŠINA - Sakau Tau Labas mix 3.m4a",
+    duration: 161.142857
+  },
+  {
+    title: "Tu nežinai",
+    src: "./assets/5. EGOMAŠINA - Tu nežinai.m4a",
+    duration: 183.5
+  },
+  {
+    title: "Paleisk Jau",
+    src: "./assets/6. EGOMAŠINA - Paleisk Jau.m4a",
+    duration: 122.5
+  },
+  {
+    title: "Ūkio Mazas",
+    src: "./assets/7. EGOMAŠINA - Ūkio Mazas (1).m4a",
+    duration: 241
+  },
+  {
+    title: "Piktas Vyras",
+    src: "./assets/8. EGOMAŠINA - Piktas Vyras mix 3.m4a",
+    duration: 209.620204
+  },
+  {
+    title: "Ne Vienas Tu",
+    src: "./assets/9. EGOMAŠINA - Ne Vienas Tu mix 2.m4a",
+    duration: 218.860113
+  },
+  {
+    title: "Trys Ir",
+    src: "./assets/10. EGOMAŠINA - Trys Ir.m4a",
+    duration: 211.5
+  },
+  {
+    title: "Seagul Sounds",
+    src: "./assets/11. EGOMAŠINA - Seagul Sounds mix 3.m4a",
+    duration: 162
+  },
+  {
+    title: "Vesiai",
+    src: "./assets/12. EGOMAŠINA - vesiai.m4a",
+    duration: 193.333333
+  },
+  {
+    title: "Plomba",
+    src: "./assets/13. EGOMAŠINA - Plomba.m4a",
+    duration: 144.545465
+  }
+];
+
+const TRACK_OFFSETS = TRACKS.reduce((offsets, track, index) => {
+  offsets[index] = index === 0 ? 0 : offsets[index - 1] + TRACKS[index - 1].duration;
+  return offsets;
+}, []);
+const TOTAL_DURATION = TRACKS.reduce((sum, track) => sum + track.duration, 0);
 
 const COLORS = {
   black: "#000000",
@@ -30,6 +102,8 @@ let frequencyData = new Uint8Array(0);
 let hasStarted = false;
 let lastFrameTime = performance.now();
 let smoothedTargetTime = 0;
+let currentTrackIndex = 0;
+let activeScrubUntil = 0;
 let scrollProgress = 0;
 let lastScrollProgress = -1;
 let bassEnergy = 0;
@@ -47,14 +121,14 @@ const sections = [
   { stride: 5, drift: 3.2, density: 0.39 }
 ];
 
-audio.dataset.src = audio.dataset.src || CONFIG.audioSrc;
-audio.addEventListener("loadedmetadata", syncScrollHeight);
+audio.addEventListener("ended", playNextTrack);
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", resize);
 window.addEventListener("scroll", updateScrollProgress, { passive: true });
-window.addEventListener("pointerdown", startExperience, { once: true });
-window.addEventListener("keydown", startExperience, { once: true });
-window.addEventListener("touchstart", startExperience, { once: true, passive: true });
+window.addEventListener("pointerdown", startExperience);
+window.addEventListener("click", startExperience);
+window.addEventListener("keydown", startExperience);
+window.addEventListener("touchstart", startExperience, { passive: true });
 
 resize();
 syncScrollHeight();
@@ -62,10 +136,14 @@ updateScrollProgress();
 requestAnimationFrame(frame);
 
 async function startExperience() {
-  if (hasStarted) return;
+  if (hasStarted) {
+    await resumePlayback();
+    return;
+  }
+
   hasStarted = true;
 
-  audio.src = audio.dataset.src || CONFIG.audioSrc;
+  setTrack(0);
   audio.preload = "auto";
 
   audioContext = new AudioContext();
@@ -82,13 +160,23 @@ async function startExperience() {
 
   try {
     await audioContext.resume();
-    updateAudioTarget(true);
-    await audio.play();
+    await seekToGlobalTime(scrollProgress * TOTAL_DURATION, true);
+    await resumePlayback();
   } catch (error) {
     if (!warningLogged) {
-      console.warn("Audio could not start. Replace CONFIG.audioSrc with the final album file.", error);
+      console.warn("Audio could not start.", error);
       warningLogged = true;
     }
+  }
+}
+
+async function resumePlayback() {
+  if (audioContext?.state === "suspended") {
+    await audioContext.resume();
+  }
+
+  if (audio.paused) {
+    await audio.play();
   }
 }
 
@@ -98,7 +186,7 @@ function frame(now) {
   phase += dt;
 
   readAudioBands();
-  updateAudioTarget(false);
+  updateAudioTarget(now);
   draw(dt);
 
   requestAnimationFrame(frame);
@@ -135,17 +223,78 @@ function bandAverage(startRatio, endRatio) {
   return sum / ((end - start) * 255);
 }
 
-function updateAudioTarget(force) {
-  const duration = Number.isFinite(audio.duration) ? audio.duration : CONFIG.albumDurationFallback;
-  const target = clamp(scrollProgress * duration, 0, Math.max(0, duration - 0.2));
+async function updateAudioTarget(now) {
+  if (!hasStarted || now > activeScrubUntil) return;
 
-  if (!hasStarted || !Number.isFinite(target)) return;
+  const target = clamp(scrollProgress * TOTAL_DURATION, 0, Math.max(0, TOTAL_DURATION - 0.2));
+  smoothedTargetTime = lerp(smoothedTargetTime || target, target, 0.32);
 
-  smoothedTargetTime = force ? target : lerp(smoothedTargetTime || target, target, 0.22);
-
-  if (Math.abs(audio.currentTime - smoothedTargetTime) > 0.65 || force) {
-    audio.currentTime = smoothedTargetTime;
+  if (Math.abs(getGlobalAudioTime() - smoothedTargetTime) > 0.2) {
+    await seekToGlobalTime(smoothedTargetTime, false);
   }
+}
+
+async function seekToGlobalTime(globalTime, force) {
+  const target = getTrackAtTime(globalTime);
+  const localTime = clamp(globalTime - TRACK_OFFSETS[target.index], 0, Math.max(0, target.track.duration - 0.2));
+
+  if (target.index !== currentTrackIndex || !audio.src) {
+    setTrack(target.index);
+    await waitForTrackReady();
+  }
+
+  if (force || Math.abs(audio.currentTime - localTime) > 0.2) {
+    audio.currentTime = localTime;
+  }
+}
+
+function setTrack(index) {
+  currentTrackIndex = clamp(index, 0, TRACKS.length - 1);
+  const track = TRACKS[currentTrackIndex];
+  const src = new URL(track.src, window.location.href).href;
+
+  if (audio.src !== src) {
+    audio.src = src;
+    audio.load();
+  }
+}
+
+function playNextTrack() {
+  if (currentTrackIndex >= TRACKS.length - 1) return;
+
+  setTrack(currentTrackIndex + 1);
+  audio.play().catch((error) => {
+    if (!warningLogged) {
+      console.warn("Could not continue to the next track.", error);
+      warningLogged = true;
+    }
+  });
+}
+
+function waitForTrackReady() {
+  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    audio.addEventListener("loadedmetadata", resolve, { once: true });
+  });
+}
+
+function getTrackAtTime(globalTime) {
+  const time = clamp(globalTime, 0, Math.max(0, TOTAL_DURATION - 0.001));
+
+  for (let i = TRACKS.length - 1; i >= 0; i -= 1) {
+    if (time >= TRACK_OFFSETS[i]) {
+      return { index: i, track: TRACKS[i] };
+    }
+  }
+
+  return { index: 0, track: TRACKS[0] };
+}
+
+function getGlobalAudioTime() {
+  return TRACK_OFFSETS[currentTrackIndex] + (Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
 }
 
 function draw(dt) {
@@ -280,6 +429,8 @@ function spawnExplosion() {
 function updateScrollProgress() {
   const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
   scrollProgress = clamp(window.scrollY / maxScroll, 0, 1);
+  activeScrubUntil = performance.now() + 420;
+  smoothedTargetTime = hasStarted ? getGlobalAudioTime() : scrollProgress * TOTAL_DURATION;
 
   if (Math.abs(scrollProgress - lastScrollProgress) > 0.001) {
     document.body.classList.toggle("is-ending", scrollProgress > 0.965);
@@ -292,8 +443,7 @@ function updateScrollProgress() {
 }
 
 function syncScrollHeight() {
-  const duration = Number.isFinite(audio.duration) ? audio.duration : CONFIG.albumDurationFallback;
-  const heightPx = Math.max(window.innerHeight * 3, Math.round(duration * CONFIG.pixelsPerSecond));
+  const heightPx = Math.max(window.innerHeight * 3, Math.round(TOTAL_DURATION * CONFIG.pixelsPerSecond));
   scrollSpace.style.minHeight = `${heightPx}px`;
   updateScrollProgress();
 }

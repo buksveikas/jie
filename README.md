@@ -1,12 +1,10 @@
-# Egomasina album site
+# JIE
 
-Static Cloudflare Pages-ready album experience.
+Static Cloudflare Pages-ready album experience for Egomasina's `JIE`.
 
-Replace these before production:
+The site is a single scroll-scrubbed canvas/audio release. The 13 album tracks live in `assets/` and are wired into `main.js` with real durations.
 
-- `index.html`: `[ALBUM TITLE]`
-- `index.html`: `[BANDCAMP URL]`
-- `main.js` and `index.html`: `./assets/ALBUM_AUDIO_FILE.mp3`
+Bandcamp: https://egomasina.bandcamp.com/
 
 Local preview:
 

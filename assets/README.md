@@ -1,9 +1,3 @@
-# Audio placeholder
+# Audio files
 
-Place the final album audio file here and update both references to:
-
-```txt
-./assets/ALBUM_AUDIO_FILE.mp3
-```
-
-The current path is intentionally a placeholder.
+This folder contains the 13 `JIE` album tracks used by `main.js`.
