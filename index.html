@@ -9,13 +9,120 @@
   </head>
   <body>
     <canvas id="album-canvas" aria-hidden="true"></canvas>
-
     <audio id="album-audio" preload="none" crossorigin="anonymous"></audio>
 
-    <main id="scroll-space" aria-label="JIE audio-visual album">
-      <section id="ending" aria-label="Album link">
-        <p>JIE</p>
-        <a href="https://egomasina.bandcamp.com/" rel="noopener">egomasina.bandcamp.com</a>
+    <button id="start-button" type="button" aria-label="Start JIE">
+      <span>JIE</span>
+      <small>START</small>
+    </button>
+
+    <main id="album" aria-label="JIE album">
+      <section class="chapter hero" data-chapter="0" data-mode="signal">
+        <div class="chapter-grid">
+          <p class="micro">EGOMASINA / 13 TRACKS / 40:10</p>
+          <h1>JIE</h1>
+          <div class="specimen specimen-a" aria-hidden="true"></div>
+          <div class="specimen specimen-b" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <section class="chapter track" data-chapter="1" data-mode="wave">
+        <div class="track-no">01</div>
+        <h2>Jie</h2>
+        <p class="micro">180.4 seconds</p>
+        <div class="track-shape shape-wave" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track alt" data-chapter="2" data-mode="bars">
+        <div class="track-no">02</div>
+        <h2>Bamboaze</h2>
+        <p class="micro">211.0 seconds</p>
+        <div class="track-shape shape-bars" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track" data-chapter="3" data-mode="corridor">
+        <div class="track-no">03</div>
+        <h2>Patogu, Patinka</h2>
+        <p class="micro">173.4 seconds</p>
+        <div class="track-shape shape-corridor" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track alt" data-chapter="4" data-mode="grid">
+        <div class="track-no">04</div>
+        <h2>Sakau Tau Labas</h2>
+        <p class="micro">161.1 seconds</p>
+        <div class="track-shape shape-grid" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track" data-chapter="5" data-mode="wave">
+        <div class="track-no">05</div>
+        <h2>Tu Nezinai</h2>
+        <p class="micro">183.5 seconds</p>
+        <div class="track-shape shape-wave" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track alt" data-chapter="6" data-mode="bars">
+        <div class="track-no">06</div>
+        <h2>Paleisk Jau</h2>
+        <p class="micro">122.5 seconds</p>
+        <div class="track-shape shape-bars" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track" data-chapter="7" data-mode="corridor">
+        <div class="track-no">07</div>
+        <h2>Ukio Mazas</h2>
+        <p class="micro">241.0 seconds</p>
+        <div class="track-shape shape-corridor" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track alt" data-chapter="8" data-mode="grid">
+        <div class="track-no">08</div>
+        <h2>Piktas Vyras</h2>
+        <p class="micro">209.6 seconds</p>
+        <div class="track-shape shape-grid" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track" data-chapter="9" data-mode="wave">
+        <div class="track-no">09</div>
+        <h2>Ne Vienas Tu</h2>
+        <p class="micro">218.9 seconds</p>
+        <div class="track-shape shape-wave" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track alt" data-chapter="10" data-mode="bars">
+        <div class="track-no">10</div>
+        <h2>Trys Ir</h2>
+        <p class="micro">211.5 seconds</p>
+        <div class="track-shape shape-bars" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track" data-chapter="11" data-mode="corridor">
+        <div class="track-no">11</div>
+        <h2>Seagul Sounds</h2>
+        <p class="micro">162.0 seconds</p>
+        <div class="track-shape shape-corridor" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track alt" data-chapter="12" data-mode="grid">
+        <div class="track-no">12</div>
+        <h2>Vesiai</h2>
+        <p class="micro">193.3 seconds</p>
+        <div class="track-shape shape-grid" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter track" data-chapter="13" data-mode="wave">
+        <div class="track-no">13</div>
+        <h2>Plomba</h2>
+        <p class="micro">144.5 seconds</p>
+        <div class="track-shape shape-wave" aria-hidden="true"></div>
+      </section>
+
+      <section class="chapter ending" data-chapter="14" data-mode="signal">
+        <div>
+          <p class="micro">END OF TRANSMISSION</p>
+          <h2>JIE</h2>
+          <a href="https://egomasina.bandcamp.com/" rel="noopener">egomasina.bandcamp.com</a>
+        </div>
       </section>
     </main>
 

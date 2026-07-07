@@ -1,33 +1,25 @@
 const CONFIG = {
-  pixelsPerSecond: 165,
-  logicalWidth: 240,
-  logicalHeight: 135,
+  logicalWidth: 220,
+  logicalHeight: 124,
   maxDevicePixelRatio: 2,
-  bassHitThreshold: 0.46,
-  scrubWindowMs: 460
+  bassHitThreshold: 0.42
 };
 
 const TRACKS = [
-  { title: "Jie", src: "./assets/1. EGOMAŠINA - Jie mix 2.m4a", duration: 180.382132 },
-  { title: "Bamboaze", src: "./assets/2. EGOMAŠINA - Bamboaze.m4a", duration: 211 },
-  { title: "Patogu, Patinka", src: "./assets/3. EGOMAŠINA - Patogu, Patinka Mix 2.m4a", duration: 173.403061 },
-  { title: "Sakau Tau Labas", src: "./assets/4. EGOMAŠINA - Sakau Tau Labas mix 3.m4a", duration: 161.142857 },
-  { title: "Tu nežinai", src: "./assets/5. EGOMAŠINA - Tu nežinai.m4a", duration: 183.5 },
-  { title: "Paleisk Jau", src: "./assets/6. EGOMAŠINA - Paleisk Jau.m4a", duration: 122.5 },
-  { title: "Ūkio Mazas", src: "./assets/7. EGOMAŠINA - Ūkio Mazas (1).m4a", duration: 241 },
-  { title: "Piktas Vyras", src: "./assets/8. EGOMAŠINA - Piktas Vyras mix 3.m4a", duration: 209.620204 },
-  { title: "Ne Vienas Tu", src: "./assets/9. EGOMAŠINA - Ne Vienas Tu mix 2.m4a", duration: 218.860113 },
-  { title: "Trys Ir", src: "./assets/10. EGOMAŠINA - Trys Ir.m4a", duration: 211.5 },
-  { title: "Seagul Sounds", src: "./assets/11. EGOMAŠINA - Seagul Sounds mix 3.m4a", duration: 162 },
-  { title: "Vesiai", src: "./assets/12. EGOMAŠINA - vesiai.m4a", duration: 193.333333 },
-  { title: "Plomba", src: "./assets/13. EGOMAŠINA - Plomba.m4a", duration: 144.545465 }
+  { title: "Jie", src: "./assets/1. EGOMAŠINA - Jie mix 2.m4a" },
+  { title: "Bamboaze", src: "./assets/2. EGOMAŠINA - Bamboaze.m4a" },
+  { title: "Patogu, Patinka", src: "./assets/3. EGOMAŠINA - Patogu, Patinka Mix 2.m4a" },
+  { title: "Sakau Tau Labas", src: "./assets/4. EGOMAŠINA - Sakau Tau Labas mix 3.m4a" },
+  { title: "Tu nežinai", src: "./assets/5. EGOMAŠINA - Tu nežinai.m4a" },
+  { title: "Paleisk Jau", src: "./assets/6. EGOMAŠINA - Paleisk Jau.m4a" },
+  { title: "Ūkio Mazas", src: "./assets/7. EGOMAŠINA - Ūkio Mazas (1).m4a" },
+  { title: "Piktas Vyras", src: "./assets/8. EGOMAŠINA - Piktas Vyras mix 3.m4a" },
+  { title: "Ne Vienas Tu", src: "./assets/9. EGOMAŠINA - Ne Vienas Tu mix 2.m4a" },
+  { title: "Trys Ir", src: "./assets/10. EGOMAŠINA - Trys Ir.m4a" },
+  { title: "Seagul Sounds", src: "./assets/11. EGOMAŠINA - Seagul Sounds mix 3.m4a" },
+  { title: "Vesiai", src: "./assets/12. EGOMAŠINA - vesiai.m4a" },
+  { title: "Plomba", src: "./assets/13. EGOMAŠINA - Plomba.m4a" }
 ];
-
-const TRACK_OFFSETS = TRACKS.reduce((offsets, track, index) => {
-  offsets[index] = index === 0 ? 0 : offsets[index - 1] + TRACKS[index - 1].duration;
-  return offsets;
-}, []);
-const TOTAL_DURATION = TRACKS.reduce((sum, track) => sum + track.duration, 0);
 
 const PALETTE = [
   [0, 0, 0],
@@ -37,7 +29,8 @@ const PALETTE = [
 
 const canvas = document.querySelector("#album-canvas");
 const audio = document.querySelector("#album-audio");
-const scrollSpace = document.querySelector("#scroll-space");
+const startButton = document.querySelector("#start-button");
+const chapters = Array.from(document.querySelectorAll(".chapter"));
 const ctx = canvas.getContext("2d", { alpha: false });
 const artCanvas = document.createElement("canvas");
 const art = artCanvas.getContext("2d", { alpha: false });
@@ -56,52 +49,48 @@ let frequencyData = new Uint8Array(0);
 let waveformData = new Uint8Array(0);
 let currentTrackIndex = 0;
 let hasStarted = false;
-let playRequested = false;
 let warningLogged = false;
 
+let activeChapter = 0;
+let activeMode = "signal";
 let scrollProgress = 0;
-let lastScrollProgress = -1;
-let targetGlobalTime = 0;
-let smoothedGlobalTime = 0;
-let scrubUntil = 0;
-
-let lastFrameTime = performance.now();
+let chapterProgress = 0;
 let phase = 0;
+let lastFrameTime = performance.now();
 let bass = 0;
 let mids = 0;
 let highs = 0;
 let bassFloor = 0;
-let bassMemory = 0;
 let lastHitAt = 0;
 
 const bursts = [];
 
 audio.preload = "none";
 audio.addEventListener("ended", playNextTrack);
-audio.addEventListener("canplay", () => {
-  if (playRequested) resumePlayback();
-});
 
+startButton.addEventListener("click", startAlbum);
+window.addEventListener("pointerdown", maybeStartFromGesture);
+window.addEventListener("keydown", maybeStartFromGesture);
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", resize);
-window.addEventListener("scroll", updateScrollProgress, { passive: true });
-window.addEventListener("pointerdown", startExperience);
-window.addEventListener("click", startExperience);
-window.addEventListener("keydown", startExperience);
-window.addEventListener("touchstart", startExperience, { passive: true });
+window.addEventListener("scroll", updateScrollState, { passive: true });
 
 resize();
-syncScrollHeight();
-updateScrollProgress();
+updateScrollState();
 requestAnimationFrame(frame);
 
-async function startExperience() {
-  playRequested = true;
+async function maybeStartFromGesture(event) {
+  if (event.target === startButton) return;
+  if (!hasStarted && window.scrollY > window.innerHeight * 0.08) {
+    await startAlbum();
+  }
+}
 
+async function startAlbum() {
   if (!hasStarted) {
     hasStarted = true;
     document.body.classList.add("is-started");
-    setTrack(getTrackAtTime(scrollProgress * TOTAL_DURATION).index);
+    setTrack(0);
     audio.preload = "auto";
 
     audioContext = new AudioContext();
@@ -116,8 +105,6 @@ async function startExperience() {
       mediaSource.connect(analyser);
       analyser.connect(audioContext.destination);
     }
-
-    await seekToGlobalTime(scrollProgress * TOTAL_DURATION, true);
   }
 
   await resumePlayback();
@@ -140,13 +127,28 @@ async function resumePlayback() {
   }
 }
 
+function setTrack(index) {
+  currentTrackIndex = Math.max(0, Math.min(TRACKS.length - 1, index));
+  const src = new URL(TRACKS[currentTrackIndex].src, window.location.href).href;
+
+  if (audio.src !== src) {
+    audio.src = src;
+    audio.load();
+  }
+}
+
+function playNextTrack() {
+  if (currentTrackIndex >= TRACKS.length - 1) return;
+  setTrack(currentTrackIndex + 1);
+  resumePlayback();
+}
+
 function frame(now) {
   const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
   lastFrameTime = now;
   phase += dt;
 
   readAudioBands();
-  updateAudioTarget(now);
   updateBursts(dt);
   draw(now);
 
@@ -157,24 +159,21 @@ function readAudioBands() {
   if (analyser && frequencyData.length) {
     analyser.getByteFrequencyData(frequencyData);
     analyser.getByteTimeDomainData(waveformData);
-
-    bass = lerp(bass, bandAverageHz(20, 250), 0.38);
+    bass = lerp(bass, bandAverageHz(20, 250), 0.36);
     mids = lerp(mids, bandAverageHz(250, 2000), 0.28);
     highs = lerp(highs, bandAverageHz(2000, 9000), 0.32);
   } else {
-    bass = 0.2 + Math.sin(phase * 1.55) * 0.08;
-    mids = 0.22 + Math.sin(phase * 0.77 + 1.2) * 0.07;
-    highs = 0.12 + Math.sin(phase * 2.1 + 2.1) * 0.06;
+    bass = 0.18 + Math.sin(phase * 1.4) * 0.07;
+    mids = 0.18 + Math.sin(phase * 0.8 + 1.4) * 0.06;
+    highs = 0.1 + Math.sin(phase * 2.2 + 2.5) * 0.05;
   }
 
-  bassFloor = lerp(bassFloor, bass, 0.018);
+  bassFloor = lerp(bassFloor, bass, 0.02);
 
-  if (bass > CONFIG.bassHitThreshold && bass > bassFloor + 0.08 && performance.now() - lastHitAt > 130) {
+  if (bass > CONFIG.bassHitThreshold && bass > bassFloor + 0.07 && performance.now() - lastHitAt > 150) {
     spawnBurst();
     lastHitAt = performance.now();
   }
-
-  bassMemory = lerp(bassMemory, bass, 0.18);
 }
 
 function bandAverageHz(lowHz, highHz) {
@@ -192,64 +191,12 @@ function bandAverageHz(lowHz, highHz) {
   return sum / ((end - start) * 255);
 }
 
-async function updateAudioTarget(now) {
-  if (!hasStarted || now > scrubUntil) return;
-
-  smoothedGlobalTime = lerp(smoothedGlobalTime, targetGlobalTime, 0.34);
-
-  if (Math.abs(getGlobalAudioTime() - smoothedGlobalTime) > 0.18) {
-    await seekToGlobalTime(smoothedGlobalTime, false);
-  }
-}
-
-async function seekToGlobalTime(globalTime, force) {
-  const target = getTrackAtTime(globalTime);
-  const localTime = clamp(globalTime - TRACK_OFFSETS[target.index], 0, Math.max(0, target.track.duration - 0.2));
-
-  if (target.index !== currentTrackIndex || !audio.src) {
-    setTrack(target.index);
-    await waitForTrackReady();
-  }
-
-  if (force || Math.abs(audio.currentTime - localTime) > 0.18) {
-    audio.currentTime = localTime;
-  }
-}
-
-function setTrack(index) {
-  currentTrackIndex = Math.round(clamp(index, 0, TRACKS.length - 1));
-  const src = new URL(TRACKS[currentTrackIndex].src, window.location.href).href;
-
-  if (audio.src !== src) {
-    audio.src = src;
-    audio.load();
-  }
-}
-
-function playNextTrack() {
-  if (currentTrackIndex >= TRACKS.length - 1) return;
-  setTrack(currentTrackIndex + 1);
-  resumePlayback();
-}
-
-function waitForTrackReady() {
-  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve) => {
-    audio.addEventListener("loadedmetadata", resolve, { once: true });
-  });
-}
-
 function draw(now) {
   fadeField();
-  drawTimelineField(now);
-  drawDitherDrift(now);
-  drawWaveformRidges();
-  drawFrequencyTeeth();
+  drawModeComposition(now);
+  drawWaveformThread();
+  drawSignalNoise(now);
   drawBursts();
-  drawHighFlicker(now);
   renderField(now);
 
   ctx.imageSmoothingEnabled = false;
@@ -259,146 +206,129 @@ function draw(now) {
 }
 
 function fadeField() {
-  const decay = hasStarted ? 0.86 - bass * 0.08 : 0.9;
+  const decay = 0.86 - bass * 0.06;
 
   for (let i = 0; i < heat.length; i += 1) {
     heat[i] *= decay;
-    if (heat[i] < 0.02) heat[i] = 0;
+    if (heat[i] < 0.018) heat[i] = 0;
   }
 }
 
-function drawTimelineField(now) {
-  const w = CONFIG.logicalWidth;
-  const h = CONFIG.logicalHeight;
-  const albumPosition = scrollProgress * TRACKS.length;
-  const act = Math.min(TRACKS.length - 1, Math.floor(albumPosition));
-  const local = albumPosition - act;
-  const redBias = clamp(0.22 + mids * 0.75 + (act % 3) * 0.08, 0.16, 0.86);
-  const density = 0.12 + mids * 0.16 + bass * 0.1;
-  const speed = hasStarted ? phase : phase * 0.45;
-  const centerX = w * (0.5 + Math.sin(scrollProgress * Math.PI * 6) * 0.18);
-  const centerY = h * (0.5 + Math.cos(scrollProgress * Math.PI * 4) * 0.12);
-
-  if (act % 4 === 0) {
-    for (let y = 0; y < h; y += 2) {
-      const wave = Math.sin(y * (0.06 + local * 0.035) + scrollProgress * 44);
-      const x = centerX + wave * (18 + bass * 34);
-      drawBlock(x, y, 2 + bass * 7, 1, 0.5 + bass, pickColor(redBias + wave * 0.08));
-      drawBlock(w - x, y, 1 + highs * 5, 1, 0.35 + highs, 1);
-    }
-  } else if (act % 4 === 1) {
-    for (let x = 0; x < w; x += 4) {
-      const gate = hash2(Math.floor(x / 4), act) < density + local * 0.08;
-      if (!gate) continue;
-      const top = Math.floor((Math.sin(x * 0.09 + scrollProgress * 30) * 0.5 + 0.5) * h * 0.42);
-      const bar = h * (0.12 + hash2(act, x) * 0.52 + bass * 0.24);
-      drawBlock(x, top, 2 + bass * 6, bar, 0.55 + mids, pickColor(redBias));
-    }
-  } else if (act % 4 === 2) {
-    for (let ring = 0; ring < 8; ring += 1) {
-      const r = 7 + ring * (5 + local * 3) + bass * 18;
-      drawRectRing(centerX, centerY, r * 1.55, r, 0.36 + highs * 0.6, ring % 2 ? 2 : 1);
-    }
+function drawModeComposition(now) {
+  if (activeMode === "bars") {
+    drawBars(now);
+  } else if (activeMode === "corridor") {
+    drawCorridor(now);
+  } else if (activeMode === "grid") {
+    drawGrid(now);
+  } else if (activeMode === "wave") {
+    drawWaves(now);
   } else {
-    for (let y = 0; y < h; y += 5) {
-      const skew = Math.sin(y * 0.21 + scrollProgress * 60 + speed) * (18 + mids * 28);
-      for (let x = -20; x < w + 20; x += 13) {
-        if (hash2(x + act * 17, y) > density + 0.18) continue;
-        drawBlock(x + skew, y, 8 + bass * 13, 2 + highs * 5, 0.42 + bass, pickColor(redBias));
-      }
-    }
+    drawSignal(now);
   }
-
-  drawGridScars(act, local, now);
 }
 
-function drawGridScars(act, local, now) {
-  const w = CONFIG.logicalWidth;
-  const h = CONFIG.logicalHeight;
-  const stride = 6 + (act % 5) * 2;
-  const pulse = Math.floor(now * 0.012 + act * 17);
+function drawWaves(now) {
+  const lanes = 3 + (activeChapter % 3);
+  const amp = 10 + bass * 28 + Math.sin(chapterProgress * Math.PI) * 18;
 
-  for (let y = 0; y < h; y += stride) {
-    const offset = Math.floor(Math.sin(y * 0.13 + local * 12) * 8);
-    for (let x = offset; x < w; x += stride * 2) {
-      if (hash2(x + pulse, y - pulse) > 0.18 + highs * 0.22) continue;
-      drawBlock(x, y, 2 + mids * 4, 1, 0.22 + highs * 0.65, (x + y + act) % 3 === 0 ? 2 : 1);
+  for (let lane = 0; lane < lanes; lane += 1) {
+    const yBase = CONFIG.logicalHeight * ((lane + 1) / (lanes + 1));
+    const colorIndex = lane % 2 ? 2 : 1;
+
+    for (let x = -4; x < CONFIG.logicalWidth + 4; x += 2) {
+      const y = yBase + Math.sin(x * 0.055 + phase * 1.1 + activeChapter) * amp;
+      drawBlock(x, y, 3 + bass * 8, 1 + highs * 3, 0.35 + mids * 0.7, colorIndex);
     }
   }
 }
 
-function drawDitherDrift(now) {
-  const w = CONFIG.logicalWidth;
-  const h = CONFIG.logicalHeight;
-  const frameSeed = Math.floor(now * 0.018);
-  const rows = 18 + Math.floor(mids * 34);
-  const columns = 10 + Math.floor(bass * 18);
+function drawBars(now) {
+  const count = 18 + activeChapter;
+  const step = CONFIG.logicalWidth / count;
 
-  for (let i = 0; i < rows; i += 1) {
-    const y = Math.floor(hash2(i + frameSeed, 19) * h);
-    const x = Math.floor((hash2(i, frameSeed) * w + scrollProgress * w * 3) % w);
-    const length = 5 + Math.floor(hash2(i + 51, frameSeed) * (16 + highs * 34));
-    const amount = 0.14 + hash2(frameSeed, i) * 0.24 + highs * 0.2;
-    drawBlock(x, y, length, 1, amount, hash2(i, frameSeed + 9) > 0.72 ? 2 : 1);
-  }
-
-  for (let i = 0; i < columns; i += 1) {
-    const x = Math.floor(hash2(i + 73, frameSeed) * w);
-    const y = Math.floor(hash2(frameSeed + 29, i) * h);
-    const height = 4 + Math.floor(hash2(i, frameSeed + 41) * (18 + bass * 36));
-    const amount = 0.12 + bass * 0.46;
-    drawBlock(x, y, 1 + Math.floor(bass * 3), height, amount, i % 3 === 0 ? 2 : 1);
+  for (let i = 0; i < count; i += 1) {
+    const energy = frequencyData.length ? frequencyData[Math.floor((i / count) * frequencyData.length * 0.55)] / 255 : hash2(i, activeChapter);
+    const h = 12 + energy * 86 + Math.sin(chapterProgress * Math.PI) * 24;
+    const x = i * step;
+    const y = CONFIG.logicalHeight - h;
+    drawBlock(x, y, Math.max(1, step * 0.42), h, 0.24 + energy, i % 3 === 0 ? 2 : 1);
   }
 }
 
-function drawWaveformRidges() {
-  const w = CONFIG.logicalWidth;
-  const h = CONFIG.logicalHeight;
-  const rows = hasStarted && waveformData.length ? 4 : 2;
+function drawCorridor(now) {
+  const cx = CONFIG.logicalWidth * (0.5 + Math.sin(chapterProgress * Math.PI * 2) * 0.18);
+  const cy = CONFIG.logicalHeight * 0.5;
+  const depth = 8 + (activeChapter % 4);
 
-  for (let row = 0; row < rows; row += 1) {
-    const yBase = h * (0.22 + row * 0.18);
-    const colorIndex = row % 2 ? 2 : 1;
+  for (let i = 0; i < depth; i += 1) {
+    const t = i / depth;
+    const w = lerp(16, CONFIG.logicalWidth * 1.25, t) + bass * 20;
+    const h = lerp(8, CONFIG.logicalHeight * 0.92, t) + mids * 18;
+    drawRectRing(cx, cy, w * 0.5, h * 0.5, 0.28 + (1 - t) * 0.35, i % 2 ? 2 : 1);
+  }
+}
 
-    for (let x = 0; x < w; x += 2) {
-      const sampleIndex = Math.floor((x / w) * waveformData.length);
-      const sample = waveformData.length ? (waveformData[sampleIndex] - 128) / 128 : Math.sin(x * 0.06 + phase * 1.7);
-      const y = yBase + sample * (6 + bass * 24) + Math.sin(scrollProgress * 20 + x * 0.03) * 4;
-      drawBlock(x, y, 2 + highs * 4, 1, 0.44 + bass * 0.45, colorIndex);
+function drawGrid(now) {
+  const size = 7 + (activeChapter % 4) * 3;
+  const drift = Math.floor(phase * 12 + chapterProgress * 50);
+
+  for (let y = -size; y < CONFIG.logicalHeight + size; y += size) {
+    for (let x = -size; x < CONFIG.logicalWidth + size; x += size) {
+      const gate = hash2(x + drift, y - drift);
+      if (gate > 0.18 + mids * 0.18) continue;
+      drawBlock(x + Math.sin(y * 0.13 + phase) * 4, y, size * 0.6, size * 0.18 + highs * 4, 0.28 + bass, gate > 0.72 ? 2 : 1);
     }
   }
 }
 
-function drawFrequencyTeeth() {
-  if (!frequencyData.length) return;
+function drawSignal(now) {
+  const seed = Math.floor(now * 0.025);
+  for (let y = 0; y < CONFIG.logicalHeight; y += 5) {
+    const x = hash2(y, seed) * CONFIG.logicalWidth;
+    drawBlock(x, y, 12 + hash2(seed, y) * 46, 1, 0.22 + highs * 0.5, y % 3 ? 1 : 2);
+  }
+}
 
-  const w = CONFIG.logicalWidth;
-  const h = CONFIG.logicalHeight;
-  const bins = 48;
-  const baseY = h - 4;
+function drawWaveformThread() {
+  if (!waveformData.length) return;
 
-  for (let i = 0; i < bins; i += 1) {
-    const bin = Math.floor((i / bins) * frequencyData.length * 0.72);
-    const energy = frequencyData[bin] / 255;
-    if (energy < 0.08) continue;
+  const yBase = CONFIG.logicalHeight * 0.5;
+  for (let x = 0; x < CONFIG.logicalWidth; x += 2) {
+    const sampleIndex = Math.floor((x / CONFIG.logicalWidth) * waveformData.length);
+    const sample = (waveformData[sampleIndex] - 128) / 128;
+    const y = yBase + sample * (8 + bass * 26);
+    drawBlock(x, y, 2 + highs * 4, 1, 0.35 + bass * 0.7, 2);
+  }
+}
 
-    const x = Math.floor((i / bins) * w);
-    const tooth = energy * (18 + mids * 30);
-    drawBlock(x, baseY - tooth, 2 + energy * 4, tooth, 0.35 + energy, i % 3 === 0 ? 2 : 1);
+function drawSignalNoise(now) {
+  const seed = Math.floor(now * 0.07);
+  const count = 90 + Math.floor(highs * 620);
+
+  for (let i = 0; i < count; i += 1) {
+    const x = Math.floor(hash2(i, seed) * CONFIG.logicalWidth);
+    const y = Math.floor(hash2(seed, i + activeChapter) * CONFIG.logicalHeight);
+    const w = 1 + Math.floor(hash2(i + 21, seed) * (2 + highs * 10));
+    drawBlock(x, y, w, 1, 0.12 + highs * 0.7, hash2(i, seed + 4) > 0.7 ? 2 : 1);
+  }
+
+  for (let y = seed % 5; y < CONFIG.logicalHeight; y += 5) {
+    if (hash2(y, seed) > 0.62 - highs * 0.18) subtractLine(y, 0.18 + highs * 0.4);
   }
 }
 
 function spawnBurst() {
   bursts.push({
-    x: CONFIG.logicalWidth * (0.5 + Math.sin(scrollProgress * 31) * 0.34),
-    y: CONFIG.logicalHeight * (0.5 + Math.cos(scrollProgress * 19) * 0.28),
+    x: CONFIG.logicalWidth * (0.5 + Math.sin(activeChapter * 1.9 + phase) * 0.34),
+    y: CONFIG.logicalHeight * (0.5 + Math.cos(activeChapter * 1.3 + phase) * 0.28),
     age: 0,
-    life: 0.45 + bass * 0.5,
+    life: 0.48 + bass * 0.4,
     seed: Math.random() * 1000,
-    color: Math.random() < 0.55 + mids * 0.35 ? 1 : 2
+    color: Math.random() > 0.4 ? 1 : 2
   });
 
-  if (bursts.length > 22) bursts.shift();
+  if (bursts.length > 16) bursts.shift();
 }
 
 function updateBursts(dt) {
@@ -411,52 +341,31 @@ function updateBursts(dt) {
 function drawBursts() {
   for (const burst of bursts) {
     const t = burst.age / burst.life;
-    const force = (1 - t) * (0.7 + bass * 1.4);
-    const radius = 5 + t * (35 + bass * 58);
-    const chunks = 12 + Math.floor(bass * 18);
+    const radius = 8 + t * (38 + bass * 48);
+    const amount = (1 - t) * (0.65 + bass);
+    drawRectRing(burst.x, burst.y, radius * 1.7, radius, amount, burst.color);
 
-    drawRectRing(burst.x, burst.y, radius * 1.8, radius, force, burst.color);
-
-    for (let i = 0; i < chunks; i += 1) {
-      const angle = burst.seed + i * 1.91;
-      const dist = radius * (0.35 + hash2(i, burst.seed) * 0.9);
-      const x = burst.x + Math.cos(angle) * dist;
-      const y = burst.y + Math.sin(angle * 1.27) * dist;
-      const size = 2 + hash2(burst.seed, i) * (7 + bass * 14);
-      drawBlock(x, y, size, Math.max(1, size * 0.5), force, i % 4 === 0 ? 2 : burst.color);
-    }
-  }
-}
-
-function drawHighFlicker(now) {
-  const w = CONFIG.logicalWidth;
-  const h = CONFIG.logicalHeight;
-  const noiseCount = Math.floor(90 + highs * 760);
-  const frameSeed = Math.floor(now * 0.06);
-
-  for (let i = 0; i < noiseCount; i += 1) {
-    const x = Math.floor(hash2(i, frameSeed) * w);
-    const y = Math.floor(hash2(frameSeed, i + 31) * h);
-    const length = 1 + Math.floor(hash2(i + 7, frameSeed) * (2 + highs * 10));
-    const colorIndex = hash2(i + 3, frameSeed) > 0.7 ? 2 : 1;
-    drawBlock(x, y, length, 1, 0.18 + highs * 0.82, colorIndex);
-  }
-
-  for (let y = frameSeed % 4; y < h; y += 4) {
-    if (hash2(y, frameSeed) < 0.62 + highs * 0.2) {
-      subtractLine(y, 0.2 + highs * 0.42);
+    for (let i = 0; i < 10; i += 1) {
+      const angle = burst.seed + i * 1.7;
+      drawBlock(
+        burst.x + Math.cos(angle) * radius,
+        burst.y + Math.sin(angle * 1.2) * radius,
+        3 + bass * 12,
+        1 + highs * 6,
+        amount,
+        i % 3 === 0 ? 2 : burst.color
+      );
     }
   }
 }
 
 function renderField(now) {
   const data = image.data;
-  const frameSeed = Math.floor(now * 0.03);
+  const seed = Math.floor(now * 0.04);
 
   for (let i = 0; i < heat.length; i += 1) {
-    const n = hash1(i + frameSeed);
-    const lit = heat[i] > 0.18 + n * 0.42;
     const offset = i * 4;
+    const lit = heat[i] > 0.16 + hash1(i + seed) * 0.38;
 
     if (!lit) {
       data[offset] = 0;
@@ -484,7 +393,6 @@ function drawBlock(x, y, blockWidth, blockHeight, amount, colorIndex) {
 
   for (let py = y0; py < y1; py += 1) {
     if (py < 0 || py >= CONFIG.logicalHeight) continue;
-
     for (let px = x0; px < x1; px += 1) {
       if (px < 0 || px >= CONFIG.logicalWidth) continue;
       const index = py * CONFIG.logicalWidth + px;
@@ -495,16 +403,11 @@ function drawBlock(x, y, blockWidth, blockHeight, amount, colorIndex) {
 }
 
 function drawRectRing(cx, cy, rx, ry, amount, colorIndex) {
-  const left = cx - rx;
-  const right = cx + rx;
-  const top = cy - ry;
-  const bottom = cy + ry;
-  const thickness = 1 + bass * 5;
-
-  drawBlock(left, top, rx * 2, thickness, amount, colorIndex);
-  drawBlock(left, bottom, rx * 2, thickness, amount, colorIndex);
-  drawBlock(left, top, thickness, ry * 2, amount, colorIndex);
-  drawBlock(right, top, thickness, ry * 2, amount, colorIndex);
+  const thickness = 1 + Math.floor(bass * 4);
+  drawBlock(cx - rx, cy - ry, rx * 2, thickness, amount, colorIndex);
+  drawBlock(cx - rx, cy + ry, rx * 2, thickness, amount, colorIndex);
+  drawBlock(cx - rx, cy - ry, thickness, ry * 2, amount, colorIndex);
+  drawBlock(cx + rx, cy - ry, thickness, ry * 2, amount, colorIndex);
 }
 
 function subtractLine(y, amount) {
@@ -517,34 +420,32 @@ function subtractLine(y, amount) {
   }
 }
 
-function pickColor(redBias) {
-  return Math.random() < redBias ? 2 : 1;
-}
-
-function updateScrollProgress() {
+function updateScrollState() {
   const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
   scrollProgress = clamp(window.scrollY / maxScroll, 0, 1);
-  targetGlobalTime = clamp(scrollProgress * TOTAL_DURATION, 0, Math.max(0, TOTAL_DURATION - 0.2));
-  scrubUntil = performance.now() + CONFIG.scrubWindowMs;
 
-  if (!hasStarted) {
-    smoothedGlobalTime = targetGlobalTime;
+  let best = chapters[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const viewportMiddle = window.innerHeight * 0.5;
+
+  for (const chapter of chapters) {
+    const rect = chapter.getBoundingClientRect();
+    const distance = Math.abs(rect.top + rect.height * 0.5 - viewportMiddle);
+    if (distance < bestDistance) {
+      best = chapter;
+      bestDistance = distance;
+    }
   }
 
-  if (Math.abs(scrollProgress - lastScrollProgress) > 0.001) {
-    document.body.classList.toggle("is-ending", scrollProgress > 0.965);
-    lastScrollProgress = scrollProgress;
-  }
+  chapters.forEach((chapter) => chapter.classList.toggle("is-active", chapter === best));
+  activeChapter = Number(best.dataset.chapter || 0);
+  activeMode = best.dataset.mode || "signal";
 
-  if (!hasStarted && window.scrollY > 2) {
-    startExperience();
-  }
-}
+  const rect = best.getBoundingClientRect();
+  chapterProgress = clamp((window.innerHeight - rect.top) / (window.innerHeight + rect.height), 0, 1);
 
-function syncScrollHeight() {
-  const heightPx = Math.max(window.innerHeight * 3, Math.round(TOTAL_DURATION * CONFIG.pixelsPerSecond));
-  scrollSpace.style.minHeight = `${heightPx}px`;
-  updateScrollProgress();
+  document.documentElement.style.setProperty("--scroll-progress", scrollProgress.toFixed(4));
+  document.documentElement.style.setProperty("--chapter-progress", chapterProgress.toFixed(4));
 }
 
 function resize() {
@@ -559,30 +460,13 @@ function resize() {
 
   artCanvas.width = CONFIG.logicalWidth;
   artCanvas.height = CONFIG.logicalHeight;
-  art.imageSmoothingEnabled = false;
-  ctx.imageSmoothingEnabled = false;
-
   image = art.createImageData(CONFIG.logicalWidth, CONFIG.logicalHeight);
   heat = new Float32Array(CONFIG.logicalWidth * CONFIG.logicalHeight);
   color = new Uint8Array(CONFIG.logicalWidth * CONFIG.logicalHeight);
 
-  syncScrollHeight();
-}
-
-function getTrackAtTime(globalTime) {
-  const time = clamp(globalTime, 0, Math.max(0, TOTAL_DURATION - 0.001));
-
-  for (let i = TRACKS.length - 1; i >= 0; i -= 1) {
-    if (time >= TRACK_OFFSETS[i]) {
-      return { index: i, track: TRACKS[i] };
-    }
-  }
-
-  return { index: 0, track: TRACKS[0] };
-}
-
-function getGlobalAudioTime() {
-  return TRACK_OFFSETS[currentTrackIndex] + (Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
+  ctx.imageSmoothingEnabled = false;
+  art.imageSmoothingEnabled = false;
+  updateScrollState();
 }
 
 function hash1(value) {
