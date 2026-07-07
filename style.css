@@ -1,0 +1,129 @@
+:root {
+  color-scheme: dark;
+  --black: #000000;
+  --yellow: #FFD700;
+  --red: #CC0000;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--black);
+  color: var(--yellow);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 16px;
+  min-height: 100%;
+  scrollbar-color: var(--red) var(--black);
+}
+
+body {
+  background: var(--black);
+  margin: 0;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+body::before {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255, 215, 0, 0.06) 0,
+      rgba(255, 215, 0, 0.06) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  content: "";
+  inset: 0;
+  mix-blend-mode: screen;
+  opacity: 0.45;
+  pointer-events: none;
+  position: fixed;
+  z-index: 2;
+}
+
+#album-canvas {
+  display: block;
+  height: 100vh;
+  image-rendering: pixelated;
+  inset: 0;
+  position: fixed;
+  touch-action: pan-y;
+  width: 100vw;
+  z-index: 0;
+}
+
+#scroll-space {
+  min-height: 42000px;
+  position: relative;
+  z-index: 1;
+}
+
+#ending {
+  align-items: center;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  justify-content: center;
+  left: 0;
+  min-height: 100vh;
+  opacity: 0;
+  padding: 12vh 8vw;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  text-align: center;
+  text-transform: uppercase;
+  transform: translateY(18px);
+  transition:
+    opacity 420ms steps(6, end),
+    transform 420ms steps(6, end);
+}
+
+body.is-ending #ending {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+#ending p,
+#ending a {
+  background: var(--black);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  line-height: 1.35;
+  margin: 0;
+  max-width: min(86vw, 760px);
+  padding: 0.18em 0.36em;
+  text-shadow:
+    2px 0 var(--red),
+    -2px 0 var(--black);
+}
+
+#ending p {
+  color: var(--yellow);
+  font-size: clamp(1.25rem, 4vw, 3rem);
+  font-weight: 700;
+}
+
+#ending a {
+  color: var(--red);
+  font-size: clamp(0.78rem, 2vw, 1.1rem);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+#ending a:focus-visible,
+#ending a:hover {
+  color: var(--yellow);
+  outline: 2px solid var(--red);
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ending {
+    transition: none;
+  }
+}

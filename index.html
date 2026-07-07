@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#000000">
+    <title>Egomasina</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <canvas id="album-canvas" aria-hidden="true"></canvas>
+
+    <audio
+      id="album-audio"
+      preload="none"
+      crossorigin="anonymous"
+      data-src="./assets/ALBUM_AUDIO_FILE.mp3"
+    ></audio>
+
+    <main id="scroll-space" aria-label="Egomasina audio-visual album">
+      <section id="ending" aria-label="Album link">
+        <p>[ALBUM TITLE]</p>
+        <a href="[BANDCAMP URL]" rel="noopener">[BANDCAMP URL]</a>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
