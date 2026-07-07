@@ -9,11 +9,12 @@ Bandcamp: https://egomasina.bandcamp.com/
 Local preview:
 
 ```sh
-npm run preview
+python3 -m http.server 8788 --bind 127.0.0.1
 ```
 
-Deploy after Cloudflare auth is configured:
+Cloudflare Pages settings:
 
-```sh
-npm run deploy
-```
+- Framework preset: `None`
+- Build command: leave empty, or use `exit 0`
+- Build output directory: `/`
+- Root directory: `/`
