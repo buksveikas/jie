@@ -29,6 +29,10 @@ const COLORS = {
   foam: "#ffffff",
   sand: "#f6c86d",
   sandDark: "#df9c35",
+  shell: "#fff3d8",
+  palm: "#5f8e2f",
+  palmDark: "#36631f",
+  wood: "#9a5c25",
   sun: "#ffd23c",
   sunDark: "#f4a900",
   skin: "#ffc58f",
@@ -73,11 +77,15 @@ const game = {
   x: 62,
   jump: 0,
   vy: 0,
+  jumpsLeft: 2,
+  maxJumps: 2,
+  jumpFlash: 0,
   invincible: 0,
   spawnTimer: 1,
   tapeTimer: 2,
   obstacles: [],
   tapes: [],
+  particles: [],
   sandOffset: 0,
   waveOffset: 0,
   cloudOffset: 0,
@@ -143,10 +151,11 @@ function update(dt) {
   game.score += dt * (12 + game.trackIndex * 1.8);
   game.sandOffset = (game.sandOffset + speed * dt) % 64;
   game.invincible = Math.max(0, game.invincible - dt);
+  game.jumpFlash = Math.max(0, game.jumpFlash - dt * 5);
   game.shake = Math.max(0, game.shake - dt * 16);
 
-  if (keys.left) game.x -= dt * 95;
-  if (keys.right) game.x += dt * 95;
+  if (keys.left) game.x -= dt * 115;
+  if (keys.right) game.x += dt * 115;
   game.x = clamp(game.x, 12, WIDTH - 72);
 
   game.jump += game.vy * dt;
@@ -154,6 +163,7 @@ function update(dt) {
   if (game.jump <= 0) {
     game.jump = 0;
     game.vy = 0;
+    game.jumpsLeft = game.maxJumps;
   }
 
   game.spawnTimer -= dt;
@@ -178,8 +188,16 @@ function update(dt) {
     tape.bob += dt * 6;
   }
 
+  for (const particle of game.particles) {
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.vy += 120 * dt;
+    particle.life -= dt;
+  }
+
   game.obstacles = game.obstacles.filter((obstacle) => obstacle.x + obstacle.w > -20);
   game.tapes = game.tapes.filter((tape) => tape.x > -16 && !tape.collected);
+  game.particles = game.particles.filter((particle) => particle.life > 0);
 
   collectTapes();
   checkObstacleHits();
@@ -214,6 +232,8 @@ function drawWorld() {
 
   rect(0, 75, WIDTH, 52, COLORS.sea);
   rect(0, 99, WIDTH, 20, COLORS.seaDark);
+  drawSailboat(38 - game.cloudOffset * 0.55, 91);
+  drawSailboat(248 - game.cloudOffset * 0.38, 104);
   for (let x = -32; x < WIDTH + 32; x += 32) {
     const waveX = x + game.waveOffset;
     rect(waveX, 82, 18, 3, COLORS.foam);
@@ -223,6 +243,10 @@ function drawWorld() {
   }
 
   rect(0, 121, WIDTH, HEIGHT - 121, COLORS.sand);
+  drawPalm(282, 117);
+  drawSurfboard(22, 137);
+  drawBeachTowel(223, 138);
+  drawCoolerDetail(256, 134);
   rect(0, GROUND_Y + 17, WIDTH, 15, COLORS.sandDark);
 
   for (let x = -64; x < WIDTH + 64; x += 16) {
@@ -230,6 +254,8 @@ function drawWorld() {
     rect(sx, 132, 7, 2, COLORS.sandDark);
     rect(sx + 9, 161, 4, 2, COLORS.sandDark);
     rect(sx + 3, 174, 10, 2, COLORS.sandDark);
+    rect(sx + 2, 142, 2, 2, COLORS.shell);
+    rect(sx + 11, 152, 3, 1, COLORS.shell);
   }
 
   rect(0, GROUND_Y + 13, WIDTH, 2, COLORS.black);
@@ -242,6 +268,10 @@ function drawEntities() {
 
   for (const obstacle of game.obstacles) {
     drawObstacle(obstacle);
+  }
+
+  for (const particle of game.particles) {
+    rect(particle.x, particle.y, particle.size, particle.size, particle.color);
   }
 
   drawBand(game.x, GROUND_Y - game.jump);
@@ -259,6 +289,10 @@ function drawOverlayHints() {
 function drawBand(x, footY) {
   const step = Math.floor(performance.now() / 110) % 2;
   drawShadow(x + 6, footY + 1, 50);
+  if (game.jumpFlash > 0) {
+    rect(x + 6, footY + 5, 46, 2, COLORS.foam);
+    rect(x + 16, footY + 9, 22, 2, COLORS.sun);
+  }
   drawPlayer(x, footY, "cap", step);
   drawPlayer(x + 18, footY, "blond", step ? 0 : 1);
   drawPlayer(x + 36, footY, "beard", step);
@@ -279,18 +313,26 @@ function drawPlayer(x, footY, type, step) {
     rect(px + 4, y + 4 + bob, 11, 4, COLORS.red);
     rect(px + 12, y + 6 + bob, 5, 2, COLORS.redDark);
     rect(px + 6, y + 12 + bob, 7, 3, COLORS.darkGray);
+    rect(px + 7, y + 10 + bob, 2, 2, COLORS.white);
     rect(px + 4, y + 29 + bob, 12, 6, COLORS.blue);
+    rect(px + 5, y + 31 + bob, 10, 2, COLORS.blueDark);
   } else if (type === "blond") {
     rect(px + 2, y + 3 + bob, 15, 8, COLORS.black);
     rect(px + 4, y + 4 + bob, 11, 8, COLORS.hair);
+    rect(px + 13, y + 8 + bob, 3, 8, COLORS.hair);
     rect(px + 6, y + 14 + bob, 6, 2, COLORS.black);
+    rect(px + 5, y + 10 + bob, 3, 2, COLORS.white);
     rect(px + 4, y + 29 + bob, 12, 6, COLORS.blue);
+    rect(px + 5, y + 31 + bob, 10, 2, COLORS.blueDark);
   } else {
     rect(px + 2, y + 3 + bob, 15, 6, COLORS.black);
     rect(px + 4, y + 4 + bob, 11, 4, COLORS.white);
     rect(px + 8, y + 5 + bob, 5, 4, COLORS.gray);
+    rect(px + 5, y + 11 + bob, 4, 2, COLORS.darkGray);
+    rect(px + 11, y + 11 + bob, 4, 2, COLORS.darkGray);
     rect(px + 4, y + 15 + bob, 10, 6, COLORS.brown);
     rect(px + 4, y + 29 + bob, 12, 6, COLORS.red);
+    rect(px + 5, y + 31 + bob, 10, 2, COLORS.redDark);
   }
 
   rect(px + 2, y + 22 + bob, 3, 10, COLORS.black);
@@ -344,6 +386,47 @@ function drawCloud(x, y, scale) {
   rect(x + 4 * s, y + 4 * s, 22 * s, 8 * s, COLORS.cloud);
   rect(x + 12 * s, y, 14 * s, 8 * s, COLORS.cloud);
   rect(x + 25 * s, y + 7 * s, 10 * s, 6 * s, COLORS.cloud);
+}
+
+function drawSailboat(x, y) {
+  const px = Math.round(x);
+  if (px < -28 || px > WIDTH + 8) return;
+  rect(px, y + 8, 25, 3, COLORS.black);
+  rect(px + 3, y + 6, 17, 3, COLORS.wood);
+  rect(px + 12, y - 8, 2, 16, COLORS.black);
+  rect(px + 14, y - 6, 9, 12, COLORS.white);
+  rect(px + 5, y - 3, 7, 9, COLORS.shell);
+}
+
+function drawPalm(x, y) {
+  rect(x + 8, y + 7, 5, 30, COLORS.black);
+  rect(x + 9, y + 8, 3, 28, COLORS.wood);
+  rect(x + 4, y + 1, 14, 5, COLORS.black);
+  rect(x - 2, y + 5, 17, 5, COLORS.black);
+  rect(x + 11, y + 4, 18, 5, COLORS.black);
+  rect(x + 4, y + 2, 13, 3, COLORS.palm);
+  rect(x - 1, y + 6, 15, 3, COLORS.palmDark);
+  rect(x + 12, y + 5, 16, 3, COLORS.palm);
+}
+
+function drawSurfboard(x, y) {
+  rect(x + 3, y - 1, 27, 6, COLORS.black);
+  rect(x + 5, y, 23, 4, COLORS.white);
+  rect(x + 12, y, 4, 4, COLORS.red);
+  rect(x + 18, y, 4, 4, COLORS.blue);
+}
+
+function drawBeachTowel(x, y) {
+  rect(x, y, 28, 10, COLORS.black);
+  rect(x + 2, y + 2, 24, 6, COLORS.sun);
+  rect(x + 8, y + 2, 4, 6, COLORS.red);
+  rect(x + 18, y + 2, 4, 6, COLORS.white);
+}
+
+function drawCoolerDetail(x, y) {
+  rect(x, y, 20, 13, COLORS.black);
+  rect(x + 2, y + 3, 16, 8, COLORS.blue);
+  rect(x + 2, y + 1, 16, 4, COLORS.white);
 }
 
 function drawSun(x, y) {
@@ -406,12 +489,7 @@ function checkObstacleHits() {
 
   const rects = playerRects();
   for (const obstacle of game.obstacles) {
-    const obstacleRect = {
-      x: obstacle.x + 3,
-      y: obstacle.y + 3,
-      w: obstacle.w - 6,
-      h: obstacle.h - 3
-    };
+    const obstacleRect = obstacleHitbox(obstacle);
     if (rects.some((rectA) => overlaps(rectA, obstacleRect))) {
       endGame();
       return;
@@ -419,12 +497,28 @@ function checkObstacleHits() {
   }
 }
 
+function obstacleHitbox(obstacle) {
+  if (obstacle.kind === "umbrella") {
+    return { x: obstacle.x + 10, y: obstacle.y + 11, w: 6, h: obstacle.h - 11 };
+  }
+
+  if (obstacle.kind === "cooler") {
+    return { x: obstacle.x + 5, y: obstacle.y + 6, w: obstacle.w - 10, h: obstacle.h - 7 };
+  }
+
+  if (obstacle.kind === "ball") {
+    return { x: obstacle.x + 5, y: obstacle.y + 5, w: obstacle.w - 10, h: obstacle.h - 9 };
+  }
+
+  return { x: obstacle.x + 4, y: obstacle.y + 5, w: obstacle.w - 8, h: obstacle.h - 6 };
+}
+
 function playerRects() {
-  const top = GROUND_Y - game.jump - 27;
+  const top = GROUND_Y - game.jump - 24;
   return [
-    { x: game.x + 5, y: top, w: 11, h: 25 },
-    { x: game.x + 23, y: top, w: 11, h: 25 },
-    { x: game.x + 41, y: top, w: 11, h: 25 }
+    { x: game.x + 7, y: top, w: 7, h: 21 },
+    { x: game.x + 25, y: top, w: 7, h: 21 },
+    { x: game.x + 43, y: top, w: 7, h: 21 }
   ];
 }
 
@@ -435,13 +529,16 @@ function startGame() {
   game.x = 62;
   game.jump = 0;
   game.vy = 0;
-  game.invincible = 1.1;
-  game.spawnTimer = 1.2;
+  game.jumpsLeft = game.maxJumps;
+  game.jumpFlash = 0;
+  game.invincible = 1.6;
+  game.spawnTimer = 1.8;
   game.tapeTimer = 1.8;
   game.obstacles = [];
   game.tapes = [];
+  game.particles = [];
   game.shake = 0;
-  statusLine.textContent = "Dodge beach junk, grab tapes, keep the band moving.";
+  statusLine.textContent = "Dodge beach junk, grab tapes, double-jump over trouble.";
   startButton.textContent = "START";
   startAudio();
   updateHud();
@@ -460,9 +557,33 @@ function endGame() {
 
 function jump() {
   if (game.state !== "playing") return;
-  if (game.jump > 2) return;
-  game.vy = 92;
-  game.jump = 1;
+  if (game.jumpsLeft <= 0) return;
+
+  const isDoubleJump = game.jump > 3;
+  game.jumpsLeft -= 1;
+  game.vy = isDoubleJump ? 108 : 116;
+  game.jump = Math.max(game.jump, 1);
+  game.jumpFlash = isDoubleJump ? 1 : 0.45;
+  game.shake = Math.max(game.shake, isDoubleJump ? 1.4 : 0.5);
+  spawnJumpParticles(isDoubleJump);
+}
+
+function spawnJumpParticles(isDoubleJump) {
+  const baseX = game.x + 27;
+  const baseY = GROUND_Y - game.jump + 5;
+  const count = isDoubleJump ? 10 : 5;
+
+  for (let i = 0; i < count; i += 1) {
+    game.particles.push({
+      x: baseX + (Math.random() - 0.5) * 38,
+      y: baseY + (Math.random() - 0.5) * 8,
+      vx: (Math.random() - 0.5) * 56,
+      vy: -24 - Math.random() * 34,
+      size: isDoubleJump ? 2 : 1,
+      life: 0.22 + Math.random() * 0.18,
+      color: isDoubleJump ? COLORS.sun : COLORS.foam
+    });
+  }
 }
 
 function handleKeyDown(event) {
@@ -474,6 +595,7 @@ function handleKeyDown(event) {
     event.preventDefault();
   } else if (event.code === "Space" || event.code === "ArrowUp" || event.code === "KeyW") {
     event.preventDefault();
+    if (event.repeat) return;
     if (game.state !== "playing") startGame();
     jump();
   } else if (event.code === "Enter" && game.state !== "playing") {
@@ -618,13 +740,13 @@ function updateHud() {
 }
 
 function currentSpeed() {
-  return 54 + game.trackIndex * 2.2 + Math.min(24, game.score / 450) + game.bass * 7;
+  return 43 + game.trackIndex * 1.8 + Math.min(18, game.score / 620) + game.bass * 5;
 }
 
 function nextSpawnDelay() {
   const difficulty = game.trackIndex / (TRACKS.length - 1);
-  const scorePressure = Math.min(0.22, game.score / 7000);
-  return 1.38 - difficulty * 0.42 - scorePressure + Math.random() * 0.32;
+  const scorePressure = Math.min(0.16, game.score / 9000);
+  return 1.7 - difficulty * 0.32 - scorePressure + Math.random() * 0.4;
 }
 
 function drawPixelText(text, x, y, color, scale = 1) {
