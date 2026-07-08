@@ -1,6 +1,7 @@
 const WIDTH = 320;
 const HEIGHT = 180;
 const GROUND_Y = 148;
+const SPAWN_X = WIDTH + 18;
 
 const TRACKS = [
   { title: "Jie", src: "./assets/1. EGOMAŠINA - Jie mix 2.m4a" },
@@ -443,24 +444,39 @@ function drawShadow(x, y, w) {
 function spawnObstacle() {
   const difficulty = game.trackIndex / (TRACKS.length - 1);
   const roll = Math.random();
+  const x = nextObstacleX();
   let obstacle;
 
   if (roll < 0.28) {
-    obstacle = { kind: "crab", x: WIDTH + 18, y: GROUND_Y - 12, w: 20, h: 12 };
+    obstacle = { kind: "crab", x, y: GROUND_Y - 12, w: 20, h: 12 };
   } else if (roll < 0.55) {
-    obstacle = { kind: "cooler", x: WIDTH + 18, y: GROUND_Y - 22, w: 24, h: 22 };
+    obstacle = { kind: "cooler", x, y: GROUND_Y - 22, w: 24, h: 22 };
   } else if (roll < 0.78) {
-    obstacle = { kind: "ball", x: WIDTH + 18, y: GROUND_Y - 16, w: 18, h: 18, spin: 0 };
+    obstacle = { kind: "ball", x, y: GROUND_Y - 16, w: 18, h: 18, spin: 0 };
   } else {
-    obstacle = { kind: "umbrella", x: WIDTH + 18, y: GROUND_Y - 31, w: 28, h: 31 };
+    obstacle = { kind: "umbrella", x, y: GROUND_Y - 31, w: 28, h: 31 };
   }
 
   game.obstacles.push(obstacle);
 
   if (difficulty > 0.45 && Math.random() < difficulty * 0.32) {
-    const gap = 54 + Math.random() * 22;
-    game.obstacles.push({ kind: "crab", x: obstacle.x + gap, y: GROUND_Y - 12, w: 20, h: 12 });
+    const gap = minObstacleGap() + 12 + Math.random() * 18;
+    game.obstacles.push({ kind: "crab", x: obstacle.x + obstacle.w + gap, y: GROUND_Y - 12, w: 20, h: 12 });
   }
+}
+
+function nextObstacleX() {
+  const rightmost = game.obstacles.reduce((max, obstacle) => {
+    return Math.max(max, obstacle.x + obstacle.w);
+  }, SPAWN_X - minObstacleGap());
+
+  return Math.max(SPAWN_X, rightmost + minObstacleGap());
+}
+
+function minObstacleGap() {
+  const difficulty = game.trackIndex / (TRACKS.length - 1);
+  const scorePressure = Math.min(10, game.score / 900);
+  return 88 - difficulty * 10 - scorePressure;
 }
 
 function spawnTape() {
