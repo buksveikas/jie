@@ -54,6 +54,8 @@ const COLORS = {
 
 const canvas = document.querySelector("#game-canvas");
 const ctx = canvas.getContext("2d", { alpha: false });
+const spriteCanvas = document.createElement("canvas");
+const spriteCtx = spriteCanvas.getContext("2d");
 const audio = document.querySelector("#album-audio");
 const startPanel = document.querySelector("#start-panel");
 const startButton = document.querySelector("#start-game");
@@ -101,7 +103,13 @@ let analyser = null;
 let mediaSource = null;
 let frequencyData = new Uint8Array(0);
 let audioWarningShown = false;
+let atlasX = 0;
+let atlasY = 0;
+let atlasRowHeight = 0;
 
+const SPRITES = {};
+
+createSpriteAtlas();
 loadTrack(0);
 updateHud();
 resize();
@@ -222,13 +230,220 @@ function draw() {
   ctx.restore();
 }
 
+function createSpriteAtlas() {
+  spriteCanvas.width = 256;
+  spriteCanvas.height = 256;
+  spriteCtx.imageSmoothingEnabled = false;
+  spriteCtx.clearRect(0, 0, spriteCanvas.width, spriteCanvas.height);
+
+  defineCharacterSprites();
+  defineWorldSprites();
+}
+
+function defineCharacterSprites() {
+  for (const type of ["cap", "blond", "beard"]) {
+    defineSprite(`${type}0`, 18, 44, (ox, oy) => drawCharacterSprite(ox, oy, type, 0, false));
+    defineSprite(`${type}1`, 18, 44, (ox, oy) => drawCharacterSprite(ox, oy, type, 1, false));
+    defineSprite(`${type}Jump`, 18, 44, (ox, oy) => drawCharacterSprite(ox, oy, type, 0, true));
+  }
+}
+
+function defineWorldSprites() {
+  defineSprite("tape", 16, 12, (x, y) => {
+    srect(x, y, 16, 12, COLORS.black);
+    srect(x + 2, y + 2, 12, 8, COLORS.tape);
+    srect(x + 4, y + 3, 8, 3, COLORS.tapeLabel);
+    srect(x + 3, y + 7, 3, 3, COLORS.white);
+    srect(x + 10, y + 7, 3, 3, COLORS.white);
+    srect(x + 6, y + 8, 4, 1, COLORS.gray);
+  });
+
+  defineSprite("crab", 22, 14, (x, y) => {
+    srect(x + 3, y + 5, 16, 8, COLORS.black);
+    srect(x + 5, y + 6, 12, 6, COLORS.red);
+    srect(x, y + 8, 5, 2, COLORS.redDark);
+    srect(x + 17, y + 8, 5, 2, COLORS.redDark);
+    srect(x + 5, y + 2, 3, 4, COLORS.black);
+    srect(x + 14, y + 2, 3, 4, COLORS.black);
+    srect(x + 6, y + 3, 2, 2, COLORS.white);
+    srect(x + 14, y + 3, 2, 2, COLORS.white);
+  });
+
+  defineSprite("cooler", 24, 23, (x, y) => {
+    srect(x, y, 24, 23, COLORS.black);
+    srect(x + 2, y + 2, 20, 6, COLORS.white);
+    srect(x + 2, y + 8, 20, 12, COLORS.blue);
+    srect(x + 5, y + 11, 14, 5, COLORS.blueDark);
+    srect(x + 8, y + 1, 8, 3, COLORS.gray);
+    srect(x + 3, y + 20, 4, 2, COLORS.darkGray);
+    srect(x + 17, y + 20, 4, 2, COLORS.darkGray);
+  });
+
+  defineSprite("ball0", 18, 18, (x, y) => drawBallSprite(x, y, false));
+  defineSprite("ball1", 18, 18, (x, y) => drawBallSprite(x, y, true));
+
+  defineSprite("umbrella", 28, 32, (x, y) => {
+    srect(x + 12, y + 9, 4, 22, COLORS.black);
+    srect(x + 13, y + 10, 2, 20, COLORS.wood);
+    srect(x + 1, y + 8, 26, 5, COLORS.black);
+    srect(x + 3, y + 4, 22, 5, COLORS.sun);
+    srect(x + 9, y + 4, 7, 7, COLORS.red);
+    srect(x + 17, y + 5, 7, 4, COLORS.shell);
+    srect(x + 2, y + 12, 5, 2, COLORS.redDark);
+    srect(x + 21, y + 12, 5, 2, COLORS.redDark);
+  });
+
+  defineSprite("cloud", 36, 18, (x, y) => {
+    srect(x, y + 9, 35, 8, COLORS.cloudBlue);
+    srect(x + 4, y + 5, 23, 8, COLORS.cloud);
+    srect(x + 12, y + 1, 14, 8, COLORS.cloud);
+    srect(x + 26, y + 8, 9, 6, COLORS.cloud);
+    srect(x + 6, y + 12, 28, 2, COLORS.foam);
+  });
+
+  defineSprite("sailboat", 28, 24, (x, y) => {
+    srect(x, y + 19, 26, 3, COLORS.black);
+    srect(x + 3, y + 17, 18, 3, COLORS.wood);
+    srect(x + 13, y + 2, 2, 17, COLORS.black);
+    srect(x + 15, y + 4, 10, 13, COLORS.white);
+    srect(x + 5, y + 9, 8, 8, COLORS.shell);
+    srect(x + 18, y + 15, 6, 2, COLORS.cloudBlue);
+  });
+
+  defineSprite("palm", 32, 40, (x, y) => {
+    srect(x + 12, y + 10, 6, 30, COLORS.black);
+    srect(x + 14, y + 11, 3, 28, COLORS.wood);
+    srect(x + 7, y + 3, 16, 5, COLORS.black);
+    srect(x + 1, y + 7, 18, 5, COLORS.black);
+    srect(x + 16, y + 6, 16, 5, COLORS.black);
+    srect(x + 7, y + 4, 15, 3, COLORS.palm);
+    srect(x + 2, y + 8, 16, 3, COLORS.palmDark);
+    srect(x + 17, y + 7, 14, 3, COLORS.palm);
+    srect(x + 13, y + 8, 7, 3, COLORS.palmDark);
+  });
+
+  defineSprite("surfboard", 30, 8, (x, y) => {
+    srect(x + 2, y + 1, 27, 6, COLORS.black);
+    srect(x + 4, y + 2, 23, 4, COLORS.white);
+    srect(x + 11, y + 2, 4, 4, COLORS.red);
+    srect(x + 18, y + 2, 4, 4, COLORS.blue);
+  });
+
+  defineSprite("towel", 30, 12, (x, y) => {
+    srect(x, y, 30, 12, COLORS.black);
+    srect(x + 2, y + 2, 26, 8, COLORS.sun);
+    srect(x + 8, y + 2, 5, 8, COLORS.red);
+    srect(x + 19, y + 2, 5, 8, COLORS.white);
+  });
+
+  defineSprite("coolerProp", 22, 15, (x, y) => {
+    srect(x, y, 22, 15, COLORS.black);
+    srect(x + 2, y + 3, 18, 10, COLORS.blue);
+    srect(x + 2, y + 1, 18, 5, COLORS.white);
+    srect(x + 8, y + 7, 6, 2, COLORS.blueDark);
+  });
+}
+
+function defineSprite(name, width, height, draw) {
+  if (atlasX + width > spriteCanvas.width) {
+    atlasX = 0;
+    atlasY += atlasRowHeight + 2;
+    atlasRowHeight = 0;
+  }
+
+  SPRITES[name] = { x: atlasX, y: atlasY, width, height };
+  draw(atlasX, atlasY);
+  atlasX += width + 2;
+  atlasRowHeight = Math.max(atlasRowHeight, height);
+}
+
+function drawSprite(name, x, y, scale = 1) {
+  const sprite = SPRITES[name];
+  if (!sprite) return;
+
+  ctx.drawImage(
+    spriteCanvas,
+    sprite.x,
+    sprite.y,
+    sprite.width,
+    sprite.height,
+    Math.round(x),
+    Math.round(y),
+    Math.round(sprite.width * scale),
+    Math.round(sprite.height * scale)
+  );
+}
+
+function srect(x, y, width, height, color) {
+  spriteCtx.fillStyle = color;
+  spriteCtx.fillRect(Math.round(x), Math.round(y), Math.round(width), Math.round(height));
+}
+
+function drawCharacterSprite(x, y, type, frame, isJumping) {
+  const bob = isJumping ? 0 : frame;
+  const leftLeg = frame === 0 ? 0 : -1;
+  const rightLeg = frame === 0 ? 0 : 1;
+
+  srect(x + 3, y + 8 + bob, 12, 14, COLORS.black);
+  srect(x + 5, y + 10 + bob, 8, 10, COLORS.skin);
+  srect(x + 3, y + 21 + bob, 12, 11, COLORS.black);
+  srect(x + 5, y + 22 + bob, 8, 8, COLORS.skin);
+  srect(x + 1, y + 23 + bob, 3, 10, COLORS.black);
+  srect(x + 14, y + 23 + bob, 3, 10, COLORS.black);
+
+  if (type === "cap") {
+    srect(x + 2, y + 4 + bob, 14, 5, COLORS.black);
+    srect(x + 3, y + 5 + bob, 12, 4, COLORS.red);
+    srect(x + 12, y + 7 + bob, 5, 2, COLORS.redDark);
+    srect(x + 6, y + 13 + bob, 7, 3, COLORS.darkGray);
+    srect(x + 7, y + 11 + bob, 2, 2, COLORS.white);
+    srect(x + 4, y + 30 + bob, 12, 6, COLORS.blue);
+    srect(x + 5, y + 32 + bob, 10, 2, COLORS.blueDark);
+  } else if (type === "blond") {
+    srect(x + 2, y + 3 + bob, 15, 9, COLORS.black);
+    srect(x + 4, y + 4 + bob, 11, 9, COLORS.hair);
+    srect(x + 13, y + 8 + bob, 3, 9, COLORS.hair);
+    srect(x + 6, y + 15 + bob, 6, 2, COLORS.black);
+    srect(x + 5, y + 11 + bob, 3, 2, COLORS.white);
+    srect(x + 4, y + 30 + bob, 12, 6, COLORS.blue);
+    srect(x + 5, y + 32 + bob, 10, 2, COLORS.blueDark);
+  } else {
+    srect(x + 2, y + 4 + bob, 15, 6, COLORS.black);
+    srect(x + 4, y + 5 + bob, 11, 4, COLORS.white);
+    srect(x + 8, y + 6 + bob, 5, 4, COLORS.gray);
+    srect(x + 5, y + 12 + bob, 4, 2, COLORS.darkGray);
+    srect(x + 11, y + 12 + bob, 4, 2, COLORS.darkGray);
+    srect(x + 4, y + 16 + bob, 10, 6, COLORS.brown);
+    srect(x + 4, y + 30 + bob, 12, 6, COLORS.red);
+    srect(x + 5, y + 32 + bob, 10, 2, COLORS.redDark);
+  }
+
+  srect(x + 5 + leftLeg, y + 36, 4, 8, COLORS.black);
+  srect(x + 11 + rightLeg, y + 36, 4, 8, COLORS.black);
+  srect(x + 6 + leftLeg, y + 37, 2, 6, COLORS.skin);
+  srect(x + 12 + rightLeg, y + 37, 2, 6, COLORS.skin);
+}
+
+function drawBallSprite(x, y, rotated) {
+  srect(x + 2, y + 2, 14, 14, COLORS.black);
+  srect(x + 4, y + 4, 10, 10, COLORS.white);
+  if (rotated) {
+    srect(x + 4, y + 9, 5, 5, COLORS.red);
+    srect(x + 9, y + 4, 5, 5, COLORS.blue);
+  } else {
+    srect(x + 4, y + 4, 5, 5, COLORS.red);
+    srect(x + 9, y + 9, 5, 5, COLORS.blue);
+  }
+  srect(x + 8, y + 8, 2, 2, COLORS.black);
+}
+
 function drawWorld() {
   rect(0, 0, WIDTH, 74, COLORS.skyTop);
   rect(0, 22, WIDTH, 60, COLORS.sky);
-  drawCloud(16 - game.cloudOffset * 0.35, 18, 1);
-  drawCloud(106 - game.cloudOffset * 0.2, 10, 0.7);
-  drawCloud(245 - game.cloudOffset * 0.28, 28, 0.85);
-  drawCloud(362 - game.cloudOffset * 0.35, 18, 1);
+  drawSprite("cloud", 16 - game.cloudOffset * 0.35, 18, 1);
+  drawSprite("cloud", 106 - game.cloudOffset * 0.2, 10, 0.7);
+  drawSprite("cloud", 245 - game.cloudOffset * 0.28, 28, 0.85);
+  drawSprite("cloud", 362 - game.cloudOffset * 0.35, 18, 1);
   drawSun(163, 32);
 
   rect(0, 75, WIDTH, 52, COLORS.sea);
@@ -244,10 +459,10 @@ function drawWorld() {
   }
 
   rect(0, 121, WIDTH, HEIGHT - 121, COLORS.sand);
-  drawPalm(282, 117);
-  drawSurfboard(22, 137);
-  drawBeachTowel(223, 138);
-  drawCoolerDetail(256, 134);
+  drawSprite("palm", 282, 117);
+  drawSprite("surfboard", 22, 137);
+  drawSprite("towel", 223, 138);
+  drawSprite("coolerProp", 256, 134);
   rect(0, GROUND_Y + 17, WIDTH, 15, COLORS.sandDark);
 
   for (let x = -64; x < WIDTH + 64; x += 16) {
@@ -300,134 +515,50 @@ function drawBand(x, footY) {
 }
 
 function drawPlayer(x, footY, type, step) {
-  const px = Math.round(x);
-  const y = Math.round(footY - 32);
-  const bob = game.jump > 0 ? 0 : step;
-
-  rect(px + 3, y + 7 + bob, 13, 14, COLORS.black);
-  rect(px + 5, y + 9 + bob, 9, 10, COLORS.skin);
-  rect(px + 3, y + 20 + bob, 13, 12, COLORS.black);
-  rect(px + 5, y + 21 + bob, 9, 8, COLORS.skin);
-
-  if (type === "cap") {
-    rect(px + 3, y + 3 + bob, 13, 5, COLORS.black);
-    rect(px + 4, y + 4 + bob, 11, 4, COLORS.red);
-    rect(px + 12, y + 6 + bob, 5, 2, COLORS.redDark);
-    rect(px + 6, y + 12 + bob, 7, 3, COLORS.darkGray);
-    rect(px + 7, y + 10 + bob, 2, 2, COLORS.white);
-    rect(px + 4, y + 29 + bob, 12, 6, COLORS.blue);
-    rect(px + 5, y + 31 + bob, 10, 2, COLORS.blueDark);
-  } else if (type === "blond") {
-    rect(px + 2, y + 3 + bob, 15, 8, COLORS.black);
-    rect(px + 4, y + 4 + bob, 11, 8, COLORS.hair);
-    rect(px + 13, y + 8 + bob, 3, 8, COLORS.hair);
-    rect(px + 6, y + 14 + bob, 6, 2, COLORS.black);
-    rect(px + 5, y + 10 + bob, 3, 2, COLORS.white);
-    rect(px + 4, y + 29 + bob, 12, 6, COLORS.blue);
-    rect(px + 5, y + 31 + bob, 10, 2, COLORS.blueDark);
-  } else {
-    rect(px + 2, y + 3 + bob, 15, 6, COLORS.black);
-    rect(px + 4, y + 4 + bob, 11, 4, COLORS.white);
-    rect(px + 8, y + 5 + bob, 5, 4, COLORS.gray);
-    rect(px + 5, y + 11 + bob, 4, 2, COLORS.darkGray);
-    rect(px + 11, y + 11 + bob, 4, 2, COLORS.darkGray);
-    rect(px + 4, y + 15 + bob, 10, 6, COLORS.brown);
-    rect(px + 4, y + 29 + bob, 12, 6, COLORS.red);
-    rect(px + 5, y + 31 + bob, 10, 2, COLORS.redDark);
-  }
-
-  rect(px + 2, y + 22 + bob, 3, 10, COLORS.black);
-  rect(px + 14, y + 22 + bob, 3, 10, COLORS.black);
-  rect(px + 5, y + 35, 4, 9, COLORS.black);
-  rect(px + 11, y + 35, 4, 9, COLORS.black);
-  rect(px + 6 - step, y + 36, 3, 7, COLORS.skin);
-  rect(px + 12 + step, y + 36, 3, 7, COLORS.skin);
+  const frame = game.jump > 0 ? "Jump" : step;
+  drawSprite(`${type}${frame}`, x, footY - 42);
 }
 
 function drawObstacle(obstacle) {
   if (obstacle.kind === "crab") {
-    rect(obstacle.x + 3, obstacle.y + 5, 14, 7, COLORS.black);
-    rect(obstacle.x + 5, obstacle.y + 6, 10, 5, COLORS.red);
-    rect(obstacle.x, obstacle.y + 7, 4, 2, COLORS.redDark);
-    rect(obstacle.x + 16, obstacle.y + 7, 4, 2, COLORS.redDark);
-    rect(obstacle.x + 6, obstacle.y + 4, 2, 2, COLORS.white);
-    rect(obstacle.x + 12, obstacle.y + 4, 2, 2, COLORS.white);
+    drawSprite("crab", obstacle.x - 1, obstacle.y - 2);
   } else if (obstacle.kind === "cooler") {
-    rect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.black);
-    rect(obstacle.x + 2, obstacle.y + 3, obstacle.w - 4, obstacle.h - 5, COLORS.blue);
-    rect(obstacle.x + 2, obstacle.y + 1, obstacle.w - 4, 5, COLORS.white);
-    rect(obstacle.x + 8, obstacle.y + 6, 8, 3, COLORS.blueDark);
+    drawSprite("cooler", obstacle.x, obstacle.y - 1);
   } else if (obstacle.kind === "umbrella") {
-    rect(obstacle.x + 11, obstacle.y + 8, 4, obstacle.h - 8, COLORS.black);
-    rect(obstacle.x + 1, obstacle.y + 8, 25, 4, COLORS.black);
-    rect(obstacle.x + 3, obstacle.y + 4, 21, 6, COLORS.sun);
-    rect(obstacle.x + 9, obstacle.y + 4, 7, 6, COLORS.red);
+    drawSprite("umbrella", obstacle.x, obstacle.y - 1);
   } else {
     const lift = Math.sin(obstacle.spin) * 2;
-    rect(obstacle.x + 2, obstacle.y + lift + 2, 14, 14, COLORS.black);
-    rect(obstacle.x + 4, obstacle.y + lift + 4, 10, 10, COLORS.white);
-    rect(obstacle.x + 4, obstacle.y + lift + 4, 5, 5, COLORS.red);
-    rect(obstacle.x + 9, obstacle.y + lift + 9, 5, 5, COLORS.blue);
+    drawSprite(Math.floor(obstacle.spin * 3) % 2 ? "ball1" : "ball0", obstacle.x, obstacle.y + lift);
   }
 }
 
 function drawTape(x, y) {
-  const px = Math.round(x);
-  const py = Math.round(y);
-  rect(px, py, 15, 10, COLORS.black);
-  rect(px + 2, py + 2, 11, 6, COLORS.tape);
-  rect(px + 4, py + 3, 7, 2, COLORS.tapeLabel);
-  rect(px + 3, py + 6, 2, 2, COLORS.white);
-  rect(px + 10, py + 6, 2, 2, COLORS.white);
+  drawSprite("tape", x, y);
 }
 
 function drawCloud(x, y, scale) {
-  const s = Math.max(1, scale);
-  rect(x, y + 8 * s, 34 * s, 8 * s, COLORS.cloudBlue);
-  rect(x + 4 * s, y + 4 * s, 22 * s, 8 * s, COLORS.cloud);
-  rect(x + 12 * s, y, 14 * s, 8 * s, COLORS.cloud);
-  rect(x + 25 * s, y + 7 * s, 10 * s, 6 * s, COLORS.cloud);
+  drawSprite("cloud", x, y, scale);
 }
 
 function drawSailboat(x, y) {
-  const px = Math.round(x);
-  if (px < -28 || px > WIDTH + 8) return;
-  rect(px, y + 8, 25, 3, COLORS.black);
-  rect(px + 3, y + 6, 17, 3, COLORS.wood);
-  rect(px + 12, y - 8, 2, 16, COLORS.black);
-  rect(px + 14, y - 6, 9, 12, COLORS.white);
-  rect(px + 5, y - 3, 7, 9, COLORS.shell);
+  if (x < -28 || x > WIDTH + 8) return;
+  drawSprite("sailboat", x, y - 14);
 }
 
 function drawPalm(x, y) {
-  rect(x + 8, y + 7, 5, 30, COLORS.black);
-  rect(x + 9, y + 8, 3, 28, COLORS.wood);
-  rect(x + 4, y + 1, 14, 5, COLORS.black);
-  rect(x - 2, y + 5, 17, 5, COLORS.black);
-  rect(x + 11, y + 4, 18, 5, COLORS.black);
-  rect(x + 4, y + 2, 13, 3, COLORS.palm);
-  rect(x - 1, y + 6, 15, 3, COLORS.palmDark);
-  rect(x + 12, y + 5, 16, 3, COLORS.palm);
+  drawSprite("palm", x, y);
 }
 
 function drawSurfboard(x, y) {
-  rect(x + 3, y - 1, 27, 6, COLORS.black);
-  rect(x + 5, y, 23, 4, COLORS.white);
-  rect(x + 12, y, 4, 4, COLORS.red);
-  rect(x + 18, y, 4, 4, COLORS.blue);
+  drawSprite("surfboard", x, y);
 }
 
 function drawBeachTowel(x, y) {
-  rect(x, y, 28, 10, COLORS.black);
-  rect(x + 2, y + 2, 24, 6, COLORS.sun);
-  rect(x + 8, y + 2, 4, 6, COLORS.red);
-  rect(x + 18, y + 2, 4, 6, COLORS.white);
+  drawSprite("towel", x, y);
 }
 
 function drawCoolerDetail(x, y) {
-  rect(x, y, 20, 13, COLORS.black);
-  rect(x + 2, y + 3, 16, 8, COLORS.blue);
-  rect(x + 2, y + 1, 16, 4, COLORS.white);
+  drawSprite("coolerProp", x, y);
 }
 
 function drawSun(x, y) {
